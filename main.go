@@ -16,6 +16,9 @@ func main() {
 	g.POST("/getAnswer", GetAnswer)
 	g.POST("/getCandidate", GetCandidate)
 	g.POST("/sendCandidate", SendCandidate)
+	g.GET("/Test", func(c *gin.Context) {
+		c.String(200, "test ...")
+	})
 
-	g.Run(":8080")
+	g.Run("0.0.0.0:8080")
 }
