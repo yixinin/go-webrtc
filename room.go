@@ -30,6 +30,7 @@ func NewRoom(c *Config) *Room {
 				URLs: c.Stun,
 			},
 		},
+		SDPSemantics: webrtc.SDPSemanticsPlanB,
 	}
 	// m := webrtc.MediaEngine{}
 	// var api = webrtc.NewAPI(webrtc.WithMediaEngine(m))
@@ -193,24 +194,28 @@ func (r *Room) OnIceCandidate(uid, fromUid int64, peer *Peer) {
 					log.Println("json marshal error", err)
 					return
 				}
-				recv.candidate = string(candiate)
+				recv.candidate = append(recv.candidate, string(candiate))
 				log.Println("candidate added, uid=", uid, "fromUid=", fromUid)
 			})
 		}
 	} else {
 		peer.pub.conn.OnICECandidate(func(c *webrtc.ICECandidate) {
+			if c == nil {
+				return
+			}
 			var candiate, err = json.Marshal(c.ToJSON())
 			if err != nil {
 				log.Println("json marshal error", err)
 				return
 			}
-			peer.pub.candidate = string(candiate)
+			peer.pub.candidate = append(peer.pub.candidate, string(candiate))
+
 			log.Println("candidate added, uid=", uid)
 		})
 	}
 }
 
-func (r *Room) GetCandidate(uid, fromUid int64) (candiate string, err error) {
+func (r *Room) GetCandidate(uid, fromUid int64) (candiate []string, err error) {
 
 	var peer, ok = r.peers[uid]
 	if !ok {

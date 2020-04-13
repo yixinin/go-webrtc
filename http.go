@@ -74,5 +74,5 @@ func GetCandidate(c *gin.Context) {
 		c.String(400, err.Error())
 		return
 	}
-	c.String(200, candidate)
+	c.JSON(200, candidate)
 }
