@@ -30,10 +30,10 @@ func (r *Receiver) AddTrack(track *webrtc.Track) error {
 }
 
 type Publisher struct {
-	conn       *webrtc.PeerConnection
-	api        *webrtc.API
-	localTrack *webrtc.Track
-	candidate  []string
+	conn        *webrtc.PeerConnection
+	api         *webrtc.API
+	outputTrack *webrtc.Track
+	candidate   []string
 }
 
 func (p *Publisher) Closed() bool {

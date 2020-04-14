@@ -102,8 +102,9 @@ func (r *Room) AddPeer(uid, fromUid int64, sdp string) (answerSdp string, err er
 		peer.AddReceiver(fromUid, peerConnection)
 		//添加其它视频源
 		for _, p := range r.peers {
-			if p.pub != nil && p.pub.localTrack != nil {
-				peerConnection.AddTrack(p.pub.localTrack)
+			if p.pub != nil && p.pub.outputTrack != nil {
+				peerConnection.AddTrack(p.pub.outputTrack)
+
 			}
 		}
 	} else {
@@ -166,8 +167,8 @@ func (r *Room) OnTrack(uid int64, peer *Peer) {
 		if err != nil {
 			log.Println(err)
 		}
-		log.Println("add local track", uid)
-		r.peers[uid].pub.localTrack = outputTrack
+		log.Println("add output track", uid)
+		r.peers[uid].pub.outputTrack = outputTrack
 		//将localTrack添加到其它reeiever
 		for _, v1 := range r.peers {
 			if _, ok := v1.recvs[uid]; ok {
@@ -191,6 +192,7 @@ func (r *Room) OnTrack(uid int64, peer *Peer) {
 				log.Println(err)
 				return
 			}
+			// log.Printf("send rtp: %+v \n", rtp.Header)
 			// i, readErr := remoteTrack.Read(rtpBuf)
 			// if readErr != nil {
 			// 	log.Println(err)
