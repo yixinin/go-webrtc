@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log"
+	"math/rand"
 	"time"
 
 	"github.com/pion/rtcp"
@@ -19,7 +19,8 @@ const (
 type Room struct {
 	Id int32
 	// api                  *webrtc.API
-	peers  map[int64]*Peer
+	peers map[int64]*Peer
+	// candidates map[int64]map[string]bool
 	config webrtc.Configuration
 }
 
@@ -36,6 +37,7 @@ func NewRoom(c *Config) *Room {
 	// var api = webrtc.NewAPI(webrtc.WithMediaEngine(m))
 	return &Room{
 		// api:                  api,
+		// candidates: make(map[int64]map[string]bool),
 		config: peerConnectionConfig,
 		peers:  make(map[int64]*Peer),
 	}
@@ -76,13 +78,16 @@ func (r *Room) AddPeer(uid, fromUid int64, sdp string) (answerSdp string, err er
 		return
 	}
 
-	// Allow us to receive 1 video track
-	if _, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo); err != nil {
-		_, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeAudio)
-		if err != nil {
-			return
+	if fromUid == 0 {
+		// Allow us to receive 1 video track
+		if _, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo); err != nil {
+			_, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeAudio)
+			if err != nil {
+				return
+			}
 		}
 	}
+
 	// if _, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeAudio); err != nil {
 	// 	return
 	// }
@@ -97,7 +102,7 @@ func (r *Room) AddPeer(uid, fromUid int64, sdp string) (answerSdp string, err er
 		peer.AddReceiver(fromUid, peerConnection)
 		//添加其它视频源
 		for _, p := range r.peers {
-			if p.pub.localTrack != nil {
+			if p.pub != nil && p.pub.localTrack != nil {
 				peerConnection.AddTrack(p.pub.localTrack)
 			}
 		}
@@ -124,6 +129,7 @@ func (r *Room) AddCandidate(uid, fromUid int64, candidateJson string) (err error
 	if err != nil {
 		return
 	}
+
 	var peer, ok = r.peers[uid]
 	if !ok {
 		return errors.New("you are not int room")
@@ -140,47 +146,64 @@ func (r *Room) AddCandidate(uid, fromUid int64, candidateJson string) (err error
 		if !peer.pub.Closed() {
 			peer.pub.conn.AddICECandidate(candidate)
 		}
-
 	}
+
 	return
 }
 
 func (r *Room) OnTrack(uid int64, peer *Peer) {
-	peer.pub.conn.OnTrack(func(remoteTrack *webrtc.Track, receiver *webrtc.RTPReceiver) {
+	peer.pub.conn.OnTrack(func(inputTrack *webrtc.Track, receiver *webrtc.RTPReceiver) {
 		go func() {
 			ticker := time.NewTicker(rtcpPLIInterval)
 			for range ticker.C {
-				if rtcpSendErr := peer.pub.conn.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: remoteTrack.SSRC()}}); rtcpSendErr != nil {
+				if rtcpSendErr := peer.pub.conn.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: inputTrack.SSRC()}}); rtcpSendErr != nil {
 					fmt.Println(rtcpSendErr)
 				}
 			}
 		}()
 
-		var localTrack, err = peer.pub.conn.NewTrack(remoteTrack.PayloadType(), remoteTrack.SSRC(), "video", "pion")
+		var outputTrack, err = peer.pub.conn.NewTrack(inputTrack.PayloadType(), rand.Uint32(), "video", "pion")
 		if err != nil {
 			log.Println(err)
 		}
-		r.peers[uid].pub.localTrack = localTrack
+		log.Println("add local track", uid)
+		r.peers[uid].pub.localTrack = outputTrack
 		//将localTrack添加到其它reeiever
 		for _, v1 := range r.peers {
 			if _, ok := v1.recvs[uid]; ok {
-				v1.recvs[uid].AddTrack(localTrack)
+				v1.recvs[uid].AddTrack(outputTrack)
 			}
 		}
+		r.peers[uid].pub.conn.AddTrack(outputTrack)
 
-		rtpBuf := make([]byte, 1400)
+		// rtpBuf := make([]byte, 1400)
 		for {
-			i, readErr := remoteTrack.Read(rtpBuf)
-			if readErr != nil {
+
+			rtp, err := inputTrack.ReadRTP()
+			if err != nil {
 				log.Println(err)
 				return
 			}
 
-			// ErrClosedPipe means we don't have any subscribers, this is ok if no peers have connected yet
-			if _, err = localTrack.Write(rtpBuf[:i]); err != nil && err != io.ErrClosedPipe {
+			rtp.SSRC = outputTrack.SSRC()
+
+			if err := outputTrack.WriteRTP(rtp); err != nil {
 				log.Println(err)
 				return
 			}
+			// i, readErr := remoteTrack.Read(rtpBuf)
+			// if readErr != nil {
+			// 	log.Println(err)
+			// 	return
+			// }
+
+			// log.Println("recv data, len=", i)
+
+			// // ErrClosedPipe means we don't have any subscribers, this is ok if no peers have connected yet
+			// if _, err = localTrack.Write(rtpBuf[:i]); err != nil && err != io.ErrClosedPipe {
+			// 	log.Println(err)
+			// 	return
+			// }
 		}
 	})
 }
@@ -189,6 +212,9 @@ func (r *Room) OnIceCandidate(uid, fromUid int64, peer *Peer) {
 	if fromUid != 0 {
 		if recv, ok := peer.recvs[fromUid]; ok {
 			recv.conn.OnICECandidate(func(c *webrtc.ICECandidate) {
+				if c == nil {
+					return
+				}
 				var candiate, err = json.Marshal(c.ToJSON())
 				if err != nil {
 					log.Println("json marshal error", err)

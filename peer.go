@@ -57,7 +57,8 @@ func (r *Receiver) Closed() bool {
 
 func NewPeer(uid int64) *Peer {
 	return &Peer{
-		uid: uid,
+		uid:   uid,
+		recvs: make(map[int64]*Receiver),
 	}
 }
 

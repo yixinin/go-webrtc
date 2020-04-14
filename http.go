@@ -51,6 +51,7 @@ func SendCandidate(c *gin.Context) {
 		c.String(400, err.Error())
 		return
 	}
+	log.Println("send candidate", p.Candidate)
 	err = DefaultRoom.AddCandidate(p.Uid, p.FromUid, p.Candidate)
 	if err != nil {
 		log.Println(err)
