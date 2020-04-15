@@ -1,6 +1,10 @@
 package main
 
-import "github.com/gin-gonic/gin"
+import (
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+)
 
 var DefaultRoom *Room
 var DefaultChat *Chat
@@ -32,6 +36,10 @@ func main() {
 
 	g.POST("/reflect", ReflectF)
 	g.POST("/reflectCand", ReflectCand)
+
+	g.StaticFS("/static", http.Dir("static"))
+	g.StaticFile("/index", "static/index.html")
+	g.StaticFile("/index.html", "static/index.html")
 
 	g.Run("0.0.0.0:8000")
 }

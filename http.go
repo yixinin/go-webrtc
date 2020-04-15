@@ -1,6 +1,9 @@
 package main
 
 import (
+	"encoding/json"
+	"io/ioutil"
+
 	"github.com/gin-gonic/gin"
 	"github.com/go-acme/lego/v3/log"
 )
@@ -13,10 +16,10 @@ type GetAnswerModel struct {
 }
 
 type SendCandidateModel struct {
-	Uid       int64         `form:"uid" json:"uid"`
-	Candidate CandiateModel `form:"candidate" json:"candidate"`
-	FromUid   int64         `form:"fromUid" json:"fromUid"`
-	RoomId    int32         `form:"roomId" json:"roomId"`
+	Uid       int64          `form:"uid" json:"uid"`
+	Candidate *CandiateModel `form:"candidate" json:"candidate"`
+	FromUid   int64          `form:"fromUid" json:"fromUid"`
+	RoomId    int32          `form:"roomId" json:"roomId"`
 }
 
 type GetCandidateModel struct {
@@ -26,9 +29,9 @@ type GetCandidateModel struct {
 }
 
 type CandiateModel struct {
-	Candidate     string `json:"candidate"`
-	SdpMlineindex uint16 `json:"sdpMlineindex"`
-	SdpMid        string `json:"sdpMid"`
+	Candidate     string `json:"candidate" form:"candidate"`
+	SdpMlineindex uint16 `json:"sdpMlineindex" form:"sdpMlineindex"`
+	SdpMid        string `json:"sdpMid" form:"sdpMid"`
 }
 
 func GetAnswer(c *gin.Context) {
@@ -50,8 +53,17 @@ func GetAnswer(c *gin.Context) {
 }
 
 func SendCandidate(c *gin.Context) {
+
+	var buf, err = ioutil.ReadAll(c.Request.Body)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	log.Println(string(buf))
+
 	var p SendCandidateModel
-	err := c.ShouldBind(&p)
+	err = json.Unmarshal(buf, &p)
+	// err = c.ShouldBind(&p)
 	if err != nil {
 		log.Println(err)
 		c.String(400, err.Error())
@@ -138,7 +150,7 @@ func SendCand(c *gin.Context) {
 	var p SendCandidateModel
 	c.ShouldBind(&p)
 	log.Printf("%+v", p)
-	DefaultChat.AddCandidate(p.Uid, &p.Candidate)
+	DefaultChat.AddCandidate(p.Uid, p.Candidate)
 	c.String(200, "")
 }
 
@@ -161,6 +173,6 @@ func ReflectCand(c *gin.Context) {
 	var p SendCandidateModel
 	c.ShouldBind(&p)
 	DefaultReflect.candidates = append(DefaultReflect.candidates, &ReflectCandidate{
-		candidate: &p.Candidate,
+		candidate: p.Candidate,
 	})
 }

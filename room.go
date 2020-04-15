@@ -119,7 +119,11 @@ func (r *Room) AddPeer(uid, fromUid int64, sdp string) (answerSdp string, err er
 	return
 }
 
-func (r *Room) AddCandidate(uid, fromUid int64, m CandiateModel) (err error) {
+func (r *Room) AddCandidate(uid, fromUid int64, m *CandiateModel) (err error) {
+	if m == nil {
+		err = errors.New("nil candidate")
+		return
+	}
 	var candidate = webrtc.ICECandidateInit{
 		Candidate:     m.Candidate,
 		SDPMLineIndex: &m.SdpMlineindex,
