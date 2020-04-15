@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"math/rand"
 	"time"
 
@@ -9,13 +10,34 @@ import (
 	"github.com/pion/webrtc/v2"
 )
 
-type Reflect interface {
+var offerChan = make(chan string)
+var answerChan = make(chan string)
+
+// var CandidateChan = make(chan CandiateModel)
+
+type Reflect struct {
+	candidates    []*ReflectCandidate
+	answerSdp     string
+	addCandidates []*CandiateModel
 }
 
-func HandleReflect(sdp string, ch chan string) {
+type ReflectCandidate struct {
+	candidate *CandiateModel
+	added     bool
+}
+
+func NewRedlect() *Reflect {
+	return &Reflect{
+		candidates:    make([]*ReflectCandidate, 0),
+		addCandidates: make([]*CandiateModel, 0),
+	}
+}
+func (r *Reflect) HandleReflect() {
 	// Everything below is the Pion WebRTC API! Thanks for using it ❤️.
 
 	// Wait for the offer to be pasted
+	sdp := <-offerChan
+
 	offer := webrtc.SessionDescription{
 		SDP:  sdp,
 		Type: webrtc.SDPTypeOffer,
@@ -34,9 +56,13 @@ func HandleReflect(sdp string, ch chan string) {
 		panic(err)
 	}
 
-	videoCodecs := mediaEngine.GetCodecsByKind(webrtc.RTPCodecTypeVideo)
-	if len(videoCodecs) == 0 {
-		panic("Offer contained no video codecs")
+	mediaCodecs := mediaEngine.GetCodecsByKind(webrtc.RTPCodecTypeVideo)
+	if len(mediaCodecs) == 0 {
+		mediaCodecs = mediaEngine.GetCodecsByKind(webrtc.RTPCodecTypeAudio)
+		// panic("Offer contained no video codecs")
+	}
+	if len(mediaCodecs) == 0 {
+		return
 	}
 
 	api := webrtc.NewAPI(webrtc.WithMediaEngine(mediaEngine))
@@ -57,7 +83,7 @@ func HandleReflect(sdp string, ch chan string) {
 	}
 
 	// Create Track that we send video back to browser on
-	outputTrack, err := peerConnection.NewTrack(videoCodecs[0].PayloadType, rand.Uint32(), "video", "pion")
+	outputTrack, err := peerConnection.NewTrack(mediaCodecs[0].PayloadType, rand.Uint32(), "video", "pion")
 	if err != nil {
 		panic(err)
 	}
@@ -110,6 +136,21 @@ func HandleReflect(sdp string, ch chan string) {
 	peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
 		fmt.Printf("Connection State has changed %s \n", connectionState.String())
 	})
+	peerConnection.OnICECandidate(func(c *webrtc.ICECandidate) {
+		if c != nil {
+			var cand = c.ToJSON()
+			var add = &CandiateModel{
+				Candidate: cand.Candidate,
+			}
+			if cand.SDPMid != nil {
+				add.SdpMid = *cand.SDPMid
+			}
+			if cand.SDPMLineIndex != nil {
+				add.SdpMlineindex = *cand.SDPMLineIndex
+			}
+			r.addCandidates = append(r.addCandidates, add)
+		}
+	})
 
 	// Create an answer
 	answer, err := peerConnection.CreateAnswer(nil)
@@ -124,8 +165,22 @@ func HandleReflect(sdp string, ch chan string) {
 	}
 
 	// Output the answer in base64 so we can paste it in browser
-	ch <- answer.SDP
+	answerChan <- answer.SDP
+	r.answerSdp = answer.SDP
+	log.Println("sended answer")
+	for {
+		if peerConnection.ICEConnectionState() == webrtc.ICEConnectionStateCompleted {
+			return
+		}
+		for _, v := range r.candidates {
+			peerConnection.AddICECandidate(webrtc.ICECandidateInit{
+				Candidate:     v.candidate.Candidate,
+				SDPMLineIndex: &v.candidate.SdpMlineindex,
+				SDPMid:        &v.candidate.SdpMid,
+			})
+		}
 
+	}
 	// Block forever
-	select {}
+	// select {}
 }

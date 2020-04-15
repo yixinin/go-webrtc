@@ -67,23 +67,23 @@ func SendCandidate(c *gin.Context) {
 	c.String(200, "success")
 }
 
-func GetCandidate(c *gin.Context) {
-	var p GetCandidateModel
-	err := c.ShouldBind(&p)
-	if err != nil {
-		c.String(400, err.Error())
-		log.Println(err)
-		return
-	}
+// func GetCandidate(c *gin.Context) {
+// 	var p GetCandidateModel
+// 	err := c.ShouldBind(&p)
+// 	if err != nil {
+// 		c.String(400, err.Error())
+// 		log.Println(err)
+// 		return
+// 	}
 
-	candidate, err := DefaultRoom.GetCandidate(p.Uid, p.FromUid)
-	if err != nil {
-		log.Println(err)
-		c.String(400, err.Error())
-		return
-	}
-	c.JSON(200, candidate)
-}
+// 	candidate, err := DefaultRoom.GetCandidate(p.Uid, p.FromUid)
+// 	if err != nil {
+// 		log.Println(err)
+// 		c.String(400, err.Error())
+// 		return
+// 	}
+// 	c.JSON(200, candidate)
+// }
 
 type SendSdpModel struct {
 	Uid int64    `json:"uid"`
@@ -108,7 +108,8 @@ func PollSdp(c *gin.Context) {
 	var p PollSdpModel
 	c.ShouldBind(&p)
 	log.Printf("%+v", p)
-	sdp := DefaultChat.GetSdp(p.FromUid, p.SdpType)
+	// sdp := DefaultChat.GetSdp(p.FromUid, p.SdpType)
+	sdp := DefaultReflect.answerSdp
 	c.String(200, sdp)
 }
 
@@ -116,7 +117,8 @@ func PollCandidate(c *gin.Context) {
 	var p PollCandModel
 	c.ShouldBind(&p)
 	log.Printf("%+v", p)
-	candidates := DefaultChat.GetCandidate(p.FromUid)
+	// candidates := DefaultChat.GetCandidate(p.FromUid)
+	candidates := DefaultReflect.candidates
 	if len(candidates) > 0 {
 		c.JSON(200, candidates)
 		return
@@ -141,15 +143,24 @@ func SendCand(c *gin.Context) {
 }
 
 type ReflectModel struct {
-	Sdp string `json:"sdp"`
+	Sdp string `json:"sdp" form:"sdp"`
 }
 
 func ReflectF(c *gin.Context) {
 	var p ReflectModel
 	c.ShouldBind(&p)
-	var ch = make(chan string)
-	go HandleReflect(p.Sdp, ch)
-	sdp := <-ch
+
+	offerChan <- p.Sdp
+
+	sdp := <-answerChan
+	log.Println("http recv answer")
 	c.String(200, sdp)
-	log.Println(sdp)
+}
+
+func ReflectCand(c *gin.Context) {
+	var p SendCandidateModel
+	c.ShouldBind(&p)
+	DefaultReflect.candidates = append(DefaultReflect.candidates, &ReflectCandidate{
+		candidate: &p.Candidate,
+	})
 }
