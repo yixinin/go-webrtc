@@ -1,11 +1,10 @@
 package main
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
-	"math/rand"
 	"time"
 
 	"github.com/pion/rtcp"
@@ -109,7 +108,7 @@ func (r *Room) AddPeer(uid, fromUid int64, sdp string) (answerSdp string, err er
 		}
 	} else {
 		peer.AddPublisher(api, peerConnection)
-		r.OnTrack(uid, peer)
+		r.OnTrack(uid, peerConnection)
 	}
 	r.OnIceCandidate(uid, fromUid, peer)
 
@@ -124,12 +123,16 @@ func (r *Room) AddPeer(uid, fromUid int64, sdp string) (answerSdp string, err er
 	return
 }
 
-func (r *Room) AddCandidate(uid, fromUid int64, candidateJson string) (err error) {
-	var candidate webrtc.ICECandidateInit
-	err = json.Unmarshal([]byte(candidateJson), &candidate)
-	if err != nil {
-		return
+func (r *Room) AddCandidate(uid, fromUid int64, m CandiateModel) (err error) {
+	var candidate = webrtc.ICECandidateInit{
+		Candidate:     m.Candidate,
+		SDPMLineIndex: &m.SdpMlineindex,
+		SDPMid:        &m.SdpMid,
 	}
+	// err = json.Unmarshal([]byte(candidateJson), &candidate)
+	// if err != nil {
+	// 	return
+	// }
 
 	var peer, ok = r.peers[uid]
 	if !ok {
@@ -152,60 +155,60 @@ func (r *Room) AddCandidate(uid, fromUid int64, candidateJson string) (err error
 	return
 }
 
-func (r *Room) OnTrack(uid int64, peer *Peer) {
-	peer.pub.conn.OnTrack(func(inputTrack *webrtc.Track, receiver *webrtc.RTPReceiver) {
+func (r *Room) OnTrack(uid int64, conn *webrtc.PeerConnection) {
+	conn.OnTrack(func(inputTrack *webrtc.Track, receiver *webrtc.RTPReceiver) {
 		go func() {
 			ticker := time.NewTicker(rtcpPLIInterval)
 			for range ticker.C {
-				if rtcpSendErr := peer.pub.conn.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: inputTrack.SSRC()}}); rtcpSendErr != nil {
+				if rtcpSendErr := conn.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: inputTrack.SSRC()}}); rtcpSendErr != nil {
 					fmt.Println(rtcpSendErr)
 				}
 			}
 		}()
 
-		var outputTrack, err = peer.pub.conn.NewTrack(inputTrack.PayloadType(), rand.Uint32(), "video", "pion")
+		var outputTrack, err = conn.NewTrack(inputTrack.PayloadType(), inputTrack.SSRC(), "video", "pion")
 		if err != nil {
 			log.Println(err)
 		}
 		log.Println("add output track", uid)
 		r.peers[uid].pub.outputTrack = outputTrack
+		r.peers[uid].pub.conn.AddTrack(outputTrack)
 		//将localTrack添加到其它reeiever
 		for _, v1 := range r.peers {
 			if _, ok := v1.recvs[uid]; ok {
 				v1.recvs[uid].AddTrack(outputTrack)
 			}
 		}
-		r.peers[uid].pub.conn.AddTrack(outputTrack)
 
-		// rtpBuf := make([]byte, 1400)
+		rtpBuf := make([]byte, 1400)
 		for {
 
-			rtp, err := inputTrack.ReadRTP()
-			if err != nil {
-				log.Println(err)
-				return
-			}
-
-			rtp.SSRC = outputTrack.SSRC()
-
-			if err := outputTrack.WriteRTP(rtp); err != nil {
-				log.Println(err)
-				return
-			}
-			// log.Printf("send rtp: %+v \n", rtp.Header)
-			// i, readErr := remoteTrack.Read(rtpBuf)
-			// if readErr != nil {
+			// rtp, err := inputTrack.ReadRTP()
+			// if err != nil {
 			// 	log.Println(err)
 			// 	return
 			// }
 
-			// log.Println("recv data, len=", i)
+			// rtp.SSRC = outputTrack.SSRC()
 
-			// // ErrClosedPipe means we don't have any subscribers, this is ok if no peers have connected yet
-			// if _, err = localTrack.Write(rtpBuf[:i]); err != nil && err != io.ErrClosedPipe {
+			// if err := outputTrack.WriteRTP(rtp); err != nil {
 			// 	log.Println(err)
 			// 	return
 			// }
+			// log.Printf("%d , send rtp: %d \n", uid, len(rtp.Payload))
+			i, readErr := inputTrack.Read(rtpBuf)
+			if readErr != nil {
+				log.Println(err)
+				return
+			}
+
+			// log.Println(uid, "recv data, len=", i)
+
+			// ErrClosedPipe means we don't have any subscribers, this is ok if no peers have connected yet
+			if _, err = outputTrack.Write(rtpBuf[:i]); err != nil && err != io.ErrClosedPipe {
+				log.Println(err)
+				return
+			}
 		}
 	})
 }
@@ -217,12 +220,17 @@ func (r *Room) OnIceCandidate(uid, fromUid int64, peer *Peer) {
 				if c == nil {
 					return
 				}
-				var candiate, err = json.Marshal(c.ToJSON())
-				if err != nil {
-					log.Println("json marshal error", err)
-					return
+				var candiate = c.ToJSON()
+				var m = CandiateModel{
+					Candidate: candiate.Candidate,
 				}
-				recv.candidate = append(recv.candidate, string(candiate))
+				if candiate.SDPMLineIndex != nil {
+					m.SdpMlineindex = *candiate.SDPMLineIndex
+				}
+				if candiate.SDPMid != nil {
+					m.SdpMid = *candiate.SDPMid
+				}
+				recv.candidate = append(recv.candidate, m)
 				log.Println("candidate added, uid=", uid, "fromUid=", fromUid)
 			})
 		}
@@ -231,19 +239,24 @@ func (r *Room) OnIceCandidate(uid, fromUid int64, peer *Peer) {
 			if c == nil {
 				return
 			}
-			var candiate, err = json.Marshal(c.ToJSON())
-			if err != nil {
-				log.Println("json marshal error", err)
-				return
+			var candiate = c.ToJSON()
+			var m = CandiateModel{
+				Candidate: candiate.Candidate,
 			}
-			peer.pub.candidate = append(peer.pub.candidate, string(candiate))
+			if candiate.SDPMLineIndex != nil {
+				m.SdpMlineindex = *candiate.SDPMLineIndex
+			}
+			if candiate.SDPMid != nil {
+				m.SdpMid = *candiate.SDPMid
+			}
+			peer.pub.candidate = append(peer.pub.candidate, m)
 
 			log.Println("candidate added, uid=", uid)
 		})
 	}
 }
 
-func (r *Room) GetCandidate(uid, fromUid int64) (candiate []string, err error) {
+func (r *Room) GetCandidate(uid, fromUid int64) (candiate []CandiateModel, err error) {
 
 	var peer, ok = r.peers[uid]
 	if !ok {

@@ -21,7 +21,7 @@ func (p *Peer) Closed() bool {
 type Receiver struct {
 	uid       int64
 	conn      *webrtc.PeerConnection
-	candidate []string
+	candidate []CandiateModel
 }
 
 func (r *Receiver) AddTrack(track *webrtc.Track) error {
@@ -33,7 +33,7 @@ type Publisher struct {
 	conn        *webrtc.PeerConnection
 	api         *webrtc.API
 	outputTrack *webrtc.Track
-	candidate   []string
+	candidate   []CandiateModel
 }
 
 func (p *Publisher) Closed() bool {
@@ -66,7 +66,7 @@ func (p *Peer) AddPublisher(api *webrtc.API, conn *webrtc.PeerConnection) {
 	p.pub = &Publisher{
 		conn:      conn,
 		api:       api,
-		candidate: make([]string, 0, 3),
+		candidate: make([]CandiateModel, 0, 3),
 	}
 }
 
@@ -77,7 +77,7 @@ func (p *Peer) AddReceiver(fromUid int64, conn *webrtc.PeerConnection) {
 	p.recvs[fromUid] = &Receiver{
 		uid:       fromUid,
 		conn:      conn,
-		candidate: make([]string, 0, 3),
+		candidate: make([]CandiateModel, 0, 3),
 	}
 }
 
