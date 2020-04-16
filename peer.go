@@ -8,6 +8,33 @@ type Peer struct {
 	uid   int64
 }
 
+type PeerConnection struct {
+	uid         int64
+	conn        *webrtc.PeerConnection
+	outputTrack *webrtc.Track
+	recvTracks  map[int64]*webrtc.Track
+}
+
+func NewPeerConnection(uid int64) *PeerConnection {
+	return &PeerConnection{
+		uid:        uid,
+		recvTracks: make(map[int64]*webrtc.Track),
+	}
+}
+
+func (p *PeerConnection) Update(conn *webrtc.PeerConnection, track *webrtc.Track) {
+	p.conn = conn
+	p.outputTrack = track
+}
+
+func (p *PeerConnection) AddTrack(fromUid int64, track *webrtc.Track) {
+	if p.conn == nil {
+		return
+	}
+	p.conn.AddTrack(track)
+	p.recvTracks[fromUid] = track
+}
+
 func (p *Peer) Closed() bool {
 	if p == nil {
 		return true

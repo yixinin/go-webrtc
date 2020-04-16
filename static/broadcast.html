@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="X-UA-Compatible" content="ie=edge">
-    <title>视频聊天</title>
+    <title>广播</title>
     <style>
         video {
             width: 320px;
@@ -20,14 +20,10 @@
 </head>
 
 <body>
-    <!-- 次空白脚本转为查询参数预留 -->
     <script></script>
-
     <script src="https://cdn.staticfile.org/jquery/1.10.2/jquery.min.js" type="text/javascript"></script>
 
     <script src="https://webrtc.github.io/adapter/adapter.js" type="text/javascript"></script>
-
-    <script type="text/javascript" src="/static/js/clientXHRSignaling.js"></script>
 
     <script>
 
@@ -37,8 +33,7 @@
         var signalingChannel, key, id,
             haveLocalMedia = false,
             weWaited = false,
-            myVideoStream, myVideo,
-            yourVideoStream, yourVideo,
+            videoStream, video1,
             doNothing = function () { },
             pc,
             constraints = {
@@ -48,22 +43,14 @@
                 }
             }
 
-        // 自动开始获取本地媒体
-        window.onload = function () {
-            document.getElementById('uid').innerText = "uid:" + randUid
-            createPC()
-
-            myVideo = document.getElementById('myVideo')
-            yourVideo = document.getElementById('yourVideo')
-            getMedia()
+        var log = msg => {
+            document.getElementById('logs').innerHTML += msg + '<br>'
         }
+
         //发送offer
         function send_offer(offer) {
-            var fromUid = document.getElementById('fromUid').value
-
             var req = {
                 offer: offer.sdp,
-                fromUid: fromUid,
                 uid: randUid
             }
 
@@ -119,10 +106,10 @@
             console.log('cound not get user media')
         }
         function gotUserMedia(stream) {
-            myVideoStream = stream
+            videoStream = stream
             haveLocalMedia = true
             // 向我显示我的本地视频
-            myVideo.srcObject = myVideoStream
+            video1.srcObject = videoStream
             // 等待pc创建完毕
             attachMediaIfReady()
         }
@@ -141,7 +128,7 @@
             console.log('config: ', JSON.stringify(config))
             pc = new RTCPeerConnection({
                 iceServers: config,
-                sdpSemantics: 'plan-b',
+                sdpSemantics: 'unified-plan',
             })
             pc.onicecandidate = onIceCandidate
             pc.onaddstream = onRemoteStreamAdded
@@ -163,16 +150,14 @@
                     setTimeout("send_candidate()", "4000");
                 }
                 cands.push(cand)
-
-
             }
         }
 
         // 如果我们浏览器检测到另一端加入了媒体流，则将其显示在屏幕上
         function onRemoteStreamAdded(e) {
-            yourVideoStream = e.stream
-            console.log('yourVideo: ', yourVideo)
-            yourVideo.srcObject = yourVideoStream
+            videoStream = e.stream
+            console.log('video: ', video1)
+            video1.srcObject = videoStream
         }
 
         // 远端移除流，这里不做操作
@@ -186,15 +171,23 @@
 
         // 将本地流添加至对等连接
         function attachMedia() {
-            pc.addStream(myVideoStream)
-            // if (queryParams && queryParams['call'] && !weWaited) {
-            // call()
-            // }
+            pc.addStream(videoStream)
         }
 
         // 生成一个offer
-        function call() {
+        function pub() {
+            document.getElementById('uid').innerText = "uid:" + randUid
+            createPC()
+            video1 = document.getElementById('video1')
+            getMedia()
+
             pc.createOffer(gotDescription, doNothing, constraints)
+        }
+        function sub() {
+            document.getElementById('uid').innerText = "uid:" + randUid
+            createPC()
+            video1 = document.getElementById('video1')
+            pc.addTransceiver('video')
         }
 
         // 应答会话描述，生成answer
@@ -207,55 +200,21 @@
             pc.setLocalDescription(localDesc)
             send_offer(localDesc)
         }
-
     </script>
 
-    <div id="setup">
-        <p>WebRTC 视频聊天demo测试</p>
-
-        <p id="uid"></p>
-        <p>
-            <input id="fromUid">
-            <button id="call" onclick="call()">呼叫</button>
-        </p>
-    </div>
-
-    <div id="scMessage" style="float:right;display:none">
-        <p>信道消息：
-            <input type="text" width="100%" name="message" id="message"
-                onkeyup="if (event.keyCode == 13){send();return false;}" />
-            <button id="send" style="display:none" onclick="send()">发送</button>
-        </p>
-
-        <p>响应：
-            <span id="response"></span>
-        </p>
-    </div>
 
     <br />
 
-    <div style="width:30%;vertical-align:top">
-        <div>
-            <video autoplay="autoplay" id="myVideo" controls muted="true" />
-        </div>
-        <p>
-            <b>发出的消息</b>
-            <br />
-            <textarea id="outmessages" style="width:100%" rows="30"></textarea>
-        </p>
-    </div>
+    Video<br />
 
-    <div style="width:30%;vertical-align:top;margin-left:200px;">
-        <div>
-            <video id="yourVideo" autoplay="autoplay" controls muted="true" />
-        </div>
-        <p>
-            <b>收到的消息</b>
-            <br />
-            <textarea id="inmessages" style="width:100%" rows="30"></textarea>
-        </p>
-    </div>
+    <p id="uid"></p>
+    <video id="video1" width="160" height="120" autoplay muted></video> <br />
 
+    <button id="pub" onclick="pub()"> Publish a Broadcast </button>
+    <button id="sub" onclick="sub()"> Join a Broadcast </button><br />
+
+    <br />
+
+    Logs<br />
+    <div id="logs"></div>
 </body>
-
-</html>

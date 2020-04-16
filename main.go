@@ -40,6 +40,8 @@ func main() {
 	g.StaticFS("/static", http.Dir("static"))
 	g.StaticFile("/index", "static/index.html")
 	g.StaticFile("/index.html", "static/index.html")
+	g.StaticFile("/broadcast", "static/broadcast.html")
 
+	go broadcast()
 	g.Run("0.0.0.0:8000")
 }

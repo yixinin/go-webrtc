@@ -42,13 +42,16 @@ func GetAnswer(c *gin.Context) {
 		c.String(400, err.Error())
 		return
 	}
-	answer, err := DefaultRoom.AddPeer(p.Uid, p.FromUid, p.Offer)
-	if err != nil {
-		log.Println(err)
+	// answer, err := DefaultRoom.AddPeer(p.Uid, p.FromUid, p.Offer)
+	// if err != nil {
+	// 	log.Println(err)
 
-		c.String(400, err.Error())
-		return
-	}
+	// 	c.String(400, err.Error())
+	// 	return
+	// }
+	offerChan <- p.Offer
+
+	answer := <-answerChan
 	c.String(200, answer)
 }
 
@@ -70,12 +73,17 @@ func SendCandidate(c *gin.Context) {
 		return
 	}
 	log.Println("send candidate", p.Candidate)
-	err = DefaultRoom.AddCandidate(p.Uid, p.FromUid, p.Candidate)
-	if err != nil {
-		log.Println(err)
-		c.String(400, err.Error())
+	// err = DefaultRoom.AddCandidate(p.Uid, p.Candidate)
+	// if err != nil {
+	// 	log.Println(err)
+	// 	c.String(400, err.Error())
+	// 	return
+	// }
+	if p.Candidate == nil {
+		c.String(400, "fail")
 		return
 	}
+	candChan <- p.Candidate
 	c.String(200, "success")
 }
 
