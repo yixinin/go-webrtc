@@ -50,7 +50,7 @@ func broadcast() {
 
 	// Allow us to receive 1 video track
 	if _, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo); err != nil {
-		if _, er = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeAudio); err != nil {
+		if _, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeAudio); err != nil {
 			panic(err)
 		}
 
