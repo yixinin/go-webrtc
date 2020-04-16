@@ -99,7 +99,7 @@
         function getMedia() {
             (navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia)({
                 audio: true,
-                video: false
+                video: true
             }, gotUserMedia, didntGetUserMedia)
         }
         function didntGetUserMedia() {
@@ -188,6 +188,7 @@
             createPC()
             video1 = document.getElementById('video1')
             pc.addTransceiver('video')
+            pc.createOffer(gotDescription, doNothing, constraints)
         }
 
         // 应答会话描述，生成answer

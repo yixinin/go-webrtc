@@ -20,7 +20,7 @@ func main() {
 	DefaultRoom = NewRoom(config)
 	DefaultChat = NewChat()
 	DefaultReflect = NewRedlect()
-	go DefaultReflect.HandleReflect()
+	// go DefaultReflect.HandleReflect()
 
 	var g = gin.Default()
 	g.POST("/getAnswer", GetAnswer)

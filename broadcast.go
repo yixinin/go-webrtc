@@ -5,6 +5,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/go-acme/lego/v3/log"
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v2"
 )
@@ -67,6 +68,7 @@ func broadcast() {
 			}
 		}()
 
+		fmt.Printf("Track has started, of type %d: %s \n", remoteTrack.PayloadType(), remoteTrack.Codec().Name)
 		// Create a local track, all our SFU clients will be fed via this track
 		localTrack, newTrackErr := peerConnection.NewTrack(remoteTrack.PayloadType(), remoteTrack.SSRC(), "video", "pion")
 		if newTrackErr != nil {
@@ -86,6 +88,10 @@ func broadcast() {
 				panic(err)
 			}
 		}
+	})
+
+	peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
+		fmt.Printf("Connection State has changed %s \n", connectionState.String())
 	})
 
 	// Set the remote SessionDescription
@@ -110,25 +116,29 @@ func broadcast() {
 	answerChan <- answer.SDP
 
 	//candidate
+FOR:
 	for {
-		if peerConnection.ICEConnectionState() == webrtc.ICEConnectionStateCompleted {
-			break
+
+		select {
+		case cand := <-candChan:
+			peerConnection.AddICECandidate(
+				webrtc.ICECandidateInit{
+					SDPMid:        &cand.SdpMid,
+					SDPMLineIndex: &cand.SdpMlineindex,
+					Candidate:     cand.Candidate,
+				},
+			)
+		default:
+			if peerConnection.ICEConnectionState() == webrtc.ICEConnectionStateConnected {
+				break FOR
+			}
 		}
-		cand := <-candChan
-		peerConnection.AddICECandidate(
-			webrtc.ICECandidateInit{
-				SDPMid:        &cand.SdpMid,
-				SDPMLineIndex: &cand.SdpMlineindex,
-				Candidate:     cand.Candidate,
-			},
-		)
 	}
+	log.Println("waiting for output track")
 
 	localTrack := <-localTrackChan
 	for {
-		fmt.Println("")
-		fmt.Println("Curl an base64 SDP to start sendonly peer connection")
-
+		log.Println("start accept subscribler")
 		sdp := <-offerChan
 		recvOnlyOffer := webrtc.SessionDescription{
 			SDP:  sdp,
@@ -140,6 +150,10 @@ func broadcast() {
 		if err != nil {
 			panic(err)
 		}
+
+		peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
+			fmt.Printf("Connection State has changed %s \n", connectionState.String())
+		})
 
 		_, err = peerConnection.AddTrack(localTrack)
 		if err != nil {

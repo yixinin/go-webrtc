@@ -62,7 +62,7 @@ func SendCandidate(c *gin.Context) {
 		log.Println(err)
 		return
 	}
-	log.Println(string(buf))
+	// log.Println(string(buf))
 
 	var p SendCandidateModel
 	err = json.Unmarshal(buf, &p)
@@ -72,7 +72,7 @@ func SendCandidate(c *gin.Context) {
 		c.String(400, err.Error())
 		return
 	}
-	log.Println("send candidate", p.Candidate)
+	// log.Println("send candidate", p.Candidate)
 	// err = DefaultRoom.AddCandidate(p.Uid, p.Candidate)
 	// if err != nil {
 	// 	log.Println(err)
