@@ -1,0 +1,31 @@
+syntax = "proto3";
+package protocol; 
+
+//请求answer
+message AddOfferReq{
+    int64  roomId =1;
+    int64 uid = 2;
+    string sdp = 3;
+    bool videoOn =5;
+    bool audioOn = 6;
+}
+
+message AddOfferAck{
+    string sdp = 1;
+}
+
+
+//添加客户端candidate
+message AddCandidateReq{
+
+}
+
+message AddCandidateAck{
+
+}
+
+
+//推送服务端candidate
+message NotifyCandidate{
+    int64 uid = 1;
+}

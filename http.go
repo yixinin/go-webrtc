@@ -8,7 +8,7 @@ import (
 	"github.com/go-acme/lego/v3/log"
 )
 
-type GetAnswerModel struct {
+type SendOfferModel struct {
 	Offer   string `form:"offer" json:"offer"`
 	FromUid int64  `form:"fromUid" json:"fromUid"`
 	RoomId  int32  `form:"roomId" json:"roomId"`
@@ -34,8 +34,8 @@ type CandiateModel struct {
 	SdpMid        string `json:"sdpMid" form:"sdpMid"`
 }
 
-func GetAnswer(c *gin.Context) {
-	var p GetAnswerModel
+func SendOffer(c *gin.Context) {
+	var p SendOfferModel
 	err := c.ShouldBind(&p)
 	if err != nil {
 		log.Println(err)
@@ -72,7 +72,7 @@ func SendCandidate(c *gin.Context) {
 		return
 	}
 	// log.Println("send candidate", p.Candidate)
-	err = DefaultRoom.AddCandidate(p.Uid, p.Candidate)
+	err = DefaultRoom.AddCandidate(p.Uid, p.FromUid, p.Candidate)
 	if err != nil {
 		log.Println(err)
 		c.String(400, err.Error())
@@ -80,24 +80,6 @@ func SendCandidate(c *gin.Context) {
 	}
 	c.String(200, "success")
 }
-
-// func GetCandidate(c *gin.Context) {
-// 	var p GetCandidateModel
-// 	err := c.ShouldBind(&p)
-// 	if err != nil {
-// 		c.String(400, err.Error())
-// 		log.Println(err)
-// 		return
-// 	}
-
-// 	candidate, err := DefaultRoom.GetCandidate(p.Uid, p.FromUid)
-// 	if err != nil {
-// 		log.Println(err)
-// 		c.String(400, err.Error())
-// 		return
-// 	}
-// 	c.JSON(200, candidate)
-// }
 
 type SendSdpModel struct {
 	Uid int64    `json:"uid"`
@@ -118,74 +100,13 @@ type SdpModel struct {
 	SdpType string `json:"sdpType"`
 }
 
-func PollSdp(c *gin.Context) {
-	var p PollSdpModel
-	c.ShouldBind(&p)
-	log.Printf("%+v", p)
-	// sdp := DefaultChat.GetSdp(p.FromUid, p.SdpType)
-	sdp := DefaultReflect.answerSdp
-	c.String(200, sdp)
-}
-
-func PollCandidate(c *gin.Context) {
-	var p PollCandModel
-	c.ShouldBind(&p)
-	log.Printf("%+v", p)
-	// candidates := DefaultChat.GetCandidate(p.FromUid)
-	candidates := DefaultReflect.candidates
-	if len(candidates) > 0 {
-		c.JSON(200, candidates)
-		return
-	}
-	c.String(400, "")
-}
-
-func SendSdp(c *gin.Context) {
-	var p SendSdpModel
-	c.ShouldBind(&p)
-	log.Printf("%+v", p)
-	DefaultChat.AddSdp(p.Uid, p.Sdp)
-	c.String(200, "")
-}
-
-func SendCand(c *gin.Context) {
-	var p SendCandidateModel
-	c.ShouldBind(&p)
-	log.Printf("%+v", p)
-	DefaultChat.AddCandidate(p.Uid, p.Candidate)
-	c.String(200, "")
-}
-
-type ReflectModel struct {
-	Sdp string `json:"sdp" form:"sdp"`
-}
-
-func ReflectF(c *gin.Context) {
-	var p ReflectModel
-	c.ShouldBind(&p)
-
-	offerChan <- p.Sdp
-
-	sdp := <-answerChan
-	log.Println("http recv answer")
-	c.String(200, sdp)
-}
-
-func ReflectCand(c *gin.Context) {
-	var p SendCandidateModel
-	c.ShouldBind(&p)
-	DefaultReflect.candidates = append(DefaultReflect.candidates, &ReflectCandidate{
-		candidate: p.Candidate,
-	})
-}
-
 var offerChan = make(chan string)
 var answerChan = make(chan string)
 var candChan = make(chan *CandiateModel, 100)
 var pollCandChan = make(chan *CandiateModel, 100)
 
 func SendOfferChan(c *gin.Context) {
-	var p GetAnswerModel
+	var p SendOfferModel
 	err := c.ShouldBind(&p)
 	if err != nil {
 		log.Println(err)

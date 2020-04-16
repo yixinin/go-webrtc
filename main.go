@@ -7,8 +7,6 @@ import (
 )
 
 var DefaultRoom *Room
-var DefaultChat *Chat
-var DefaultReflect *Reflect
 
 func main() {
 	var config = new(Config)
@@ -18,34 +16,23 @@ func main() {
 	}
 
 	DefaultRoom = NewRoom(config)
-	DefaultChat = NewChat()
-	DefaultReflect = NewRedlect()
 	// go DefaultReflect.HandleReflect()
+	HandleHttp()
+}
 
+func HandleHttp() {
 	var g = gin.Default()
-	g.POST("/getAnswer", GetAnswer)
-	// g.POST("/getCandidate", GetCandidate)
-	g.POST("/sendCandidate", SendCandidate)
-	g.GET("/Test", func(c *gin.Context) {
-		c.String(200, "test ...")
-	})
-	g.POST("/sendSdp", SendSdp)
-	g.POST("/sendCand", SendCand)
-	g.POST("/pollSdp", PollSdp)
-	g.POST("/pollCand", PollCandidate)
-
-	g.POST("/reflect", ReflectF)
-	g.POST("/reflectCand", ReflectCand)
-
-	g.POST("/sendOfferChan", SendOfferChan)
-	g.POST("/sendCandChan", SendCandChan)
-	g.GET("/pollCandChan", PollCandChan)
-
 	g.StaticFS("/static", http.Dir("static"))
 	g.StaticFile("/index", "static/index.html")
 	g.StaticFile("/index.html", "static/index.html")
 	g.StaticFile("/broadcast", "static/broadcast.html")
 
-	go broadcast()
+	g.POST("/getAnswer", SendOffer)
+	g.POST("/sendCandidate", SendCandidate)
+
+	g.POST("/sendOfferChan", SendOfferChan)
+	g.POST("/sendCandChan", SendCandChan)
+	g.GET("/pollCandChan", PollCandChan)
+
 	g.Run("0.0.0.0:8000")
 }

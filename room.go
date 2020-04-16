@@ -3,8 +3,8 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
 	"log"
-	"math/rand"
 	"strconv"
 	"time"
 
@@ -17,17 +17,13 @@ const (
 )
 
 type Room struct {
-	Id int32
+	Id  int32
+	Key string
 	// api                  *webrtc.API
-	peers map[int64]*PeerConnection
+	peers map[int64]*Peer
 
 	// candidates map[int64]map[string]bool
 	config webrtc.Configuration
-}
-
-type RoomCandidate struct {
-	PubCandidate  []*CandiateModel
-	RecvCandidate map[int64][]*CandiateModel
 }
 
 func NewRoom(c *Config) *Room {
@@ -45,7 +41,7 @@ func NewRoom(c *Config) *Room {
 		// api:                  api,
 		// candidates: make(map[int64]map[string]bool),
 		config: peerConnectionConfig,
-		peers:  make(map[int64]*PeerConnection),
+		peers:  make(map[int64]*Peer),
 	}
 }
 
@@ -54,6 +50,7 @@ func (r *Room) AddPeer(uid, fromUid int64, sdp string) (answerSdp string, err er
 		SDP:  sdp,
 		Type: webrtc.SDPTypeOffer,
 	}
+	var isPublisher = fromUid == 0
 	m := webrtc.MediaEngine{}
 	var mediaCodecs []*webrtc.RTPCodec
 	//发布
@@ -62,12 +59,8 @@ func (r *Room) AddPeer(uid, fromUid int64, sdp string) (answerSdp string, err er
 	if err != nil {
 		return
 	}
-	var hasVideo = true
-	var hasAudio = true
 	mediaCodecs = m.GetCodecsByKind(webrtc.RTPCodecTypeVideo)
 	if len(mediaCodecs) == 0 {
-		hasVideo = false
-		hasAudio = true
 		mediaCodecs = m.GetCodecsByKind(webrtc.RTPCodecTypeAudio)
 	}
 	// }
@@ -82,39 +75,40 @@ func (r *Room) AddPeer(uid, fromUid int64, sdp string) (answerSdp string, err er
 
 	var peer, ok = r.peers[uid]
 	if !ok {
-		peer = NewPeerConnection(uid)
-		if len(mediaCodecs) == 0 {
-			err = errors.New("no media published")
-			return
-		}
-		outputTrack, err := peerConnection.NewTrack(mediaCodecs[0].PayloadType, rand.Uint32(), strconv.FormatInt(uid, 10), "pion")
-		if err != nil {
-			log.Println(err)
-		}
-
-		//TODO 测试 将视频流返回给发布者
-
-		peer.Update(peerConnection, outputTrack)
-		r.OnTrack(uid, peerConnection)
-
-		if fromUid != 0 {
-			//添加目标视频源
-			targetPeer, ok := r.peers[fromUid]
-			if ok {
-				peer.AddTrack(fromUid, targetPeer.outputTrack)
-			}
-		} else {
-			peerConnection.AddTrack(outputTrack)
-			if hasVideo {
-				// peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo)
-			}
-			if hasAudio {
-				// peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeAudio)
-			}
-
-		}
+		peer = NewPeer(uid)
 
 		r.peers[uid] = peer
+	}
+
+	if isPublisher {
+		peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo)
+		peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeAudio)
+
+		peer.AddPublisher(peerConnection)
+
+		r.OnTrack(uid, peerConnection)
+	} else {
+		//添加目标视频源
+
+		targetPeer, ok := r.peers[fromUid]
+		var senders = make([]*webrtc.RTPSender, 0, len(targetPeer.pub.outputTracks))
+		if ok {
+			for _, track := range targetPeer.pub.outputTracks {
+				if track != nil {
+					var sender *webrtc.RTPSender
+					sender, err = peerConnection.AddTrack(track)
+					if err != nil {
+						log.Println(err)
+						return
+					}
+					if sender != nil {
+						senders = append(senders, sender)
+					}
+				}
+			}
+		}
+
+		peer.AddSubscriber(fromUid, peerConnection, senders)
 	}
 
 	// r.OnIceCandidate(uid, fromUid, peer)
@@ -133,7 +127,7 @@ func (r *Room) AddPeer(uid, fromUid int64, sdp string) (answerSdp string, err er
 	return
 }
 
-func (r *Room) AddCandidate(uid int64, m *CandiateModel) (err error) {
+func (r *Room) AddCandidate(uid, fromUid int64, m *CandiateModel) (err error) {
 	if m == nil {
 		err = errors.New("nil candidate")
 		return
@@ -148,11 +142,15 @@ func (r *Room) AddCandidate(uid int64, m *CandiateModel) (err error) {
 	if !ok {
 		return errors.New("you are not int room")
 	}
-	if peer.conn == nil {
-		return errors.New("peer closed")
+	if fromUid != 0 {
+		if sub, ok := peer.subs[fromUid]; ok && !sub.Closed() {
+			sub.conn.AddICECandidate(candidate)
+		}
+	} else {
+		if !peer.pub.Closed() {
+			peer.pub.conn.AddICECandidate(candidate)
+		}
 	}
-
-	peer.conn.AddICECandidate(candidate)
 	return
 }
 
@@ -168,100 +166,62 @@ func (r *Room) OnTrack(uid int64, conn *webrtc.PeerConnection) {
 			}
 		}()
 
-		var outputTrack = r.peers[uid].outputTrack
 		fmt.Printf("Track has started, of type %d: %s \n", inputTrack.PayloadType(), inputTrack.Codec().Name)
+		//创建track
+		var outputTrack, err = conn.NewTrack(inputTrack.PayloadType(), inputTrack.SSRC(), strconv.FormatInt(uid, 10), "output-"+inputTrack.Label())
+		if err != nil {
+			log.Println("create output track err", err)
+			return
+		}
+
+		r.peers[uid].AddTrack(outputTrack)
+
+		rtpBuf := make([]byte, 1400)
 		for {
-			// Read RTP packets being sent to Pion
-			rtp, readErr := inputTrack.ReadRTP()
+			i, readErr := inputTrack.Read(rtpBuf)
 			if readErr != nil {
-				log.Println(readErr)
+				log.Println(err)
+				return
 			}
 
-			// Replace the SSRC with the SSRC of the outbound track.
-			// The only change we are making replacing the SSRC, the RTP packets are unchanged otherwise
-			rtp.SSRC = outputTrack.SSRC()
-
-			if writeErr := outputTrack.WriteRTP(rtp); writeErr != nil {
-
+			// ErrClosedPipe means we don't have any subscribers, this is ok if no peers have connected yet
+			if _, err = outputTrack.Write(rtpBuf[:i]); err != nil && err != io.ErrClosedPipe {
+				log.Println(err)
+				return
 			}
 		}
 	})
 }
 
-func (r *Room) CandidateSync() {
-	for _, peer := range r.peers {
-		if peer.conn != nil {
-			if peer.conn.ICEConnectionState() != webrtc.ICEConnectionStateConnected {
-
+func (r *Room) ControlSubscriber(uid, fromUid int64, videoOn, audioOn bool) {
+	if peer, ok := r.peers[uid]; ok {
+		if sub, ok := peer.subs[fromUid]; ok {
+			if !videoOn && !audioOn {
+				sub.Close()
+				delete(peer.subs, fromUid)
+			} else {
+				for _, sender := range sub.senders {
+					if !audioOn && sender.Track().Codec().Type == webrtc.RTPCodecTypeAudio {
+						sub.conn.RemoveTrack(sender)
+					}
+					if !videoOn && sender.Track().Codec().Type == webrtc.RTPCodecTypeVideo {
+						sub.conn.RemoveTrack(sender)
+					}
+				}
 			}
+
 		}
 	}
 }
 
-// func (r *Room) OnIceCandidate(uid, fromUid int64, peer *Peer) {
-// 	if fromUid != 0 {
-// 		if recv, ok := peer.recvs[fromUid]; ok {
-// 			recv.conn.OnICECandidate(func(c *webrtc.ICECandidate) {
-// 				if c == nil {
-// 					return
-// 				}
-// 				var candiate = c.ToJSON()
-// 				var m = CandiateModel{
-// 					Candidate: candiate.Candidate,
-// 				}
-// 				if candiate.SDPMLineIndex != nil {
-// 					m.SdpMlineindex = *candiate.SDPMLineIndex
-// 				}
-// 				if candiate.SDPMid != nil {
-// 					m.SdpMid = *candiate.SDPMid
-// 				}
-// 				recv.candidate = append(recv.candidate, m)
-// 				log.Println("candidate added, uid=", uid, "fromUid=", fromUid)
-// 			})
-// 		}
-// 	} else {
-// 		peer.pub.conn.OnICECandidate(func(c *webrtc.ICECandidate) {
-// 			if c == nil {
-// 				return
-// 			}
-// 			var candiate = c.ToJSON()
-// 			var m = CandiateModel{
-// 				Candidate: candiate.Candidate,
-// 			}
-// 			if candiate.SDPMLineIndex != nil {
-// 				m.SdpMlineindex = *candiate.SDPMLineIndex
-// 			}
-// 			if candiate.SDPMid != nil {
-// 				m.SdpMid = *candiate.SDPMid
-// 			}
-// 			peer.pub.candidate = append(peer.pub.candidate, m)
-
-// 			log.Println("candidate added, uid=", uid)
-// 		})
-// 	}
-// }
-
-// func (r *Room) GetCandidate(uid, fromUid int64) (candiate []CandiateModel, err error) {
-
-// 	var peer, ok = r.peers[uid]
-// 	if !ok {
-// 		err = errors.New("your are not int room")
-// 		return
-// 	}
-// 	if peer.Closed() {
-// 		err = errors.New("peer closed")
-// 		return
-// 	}
-// 	if fromUid != 0 {
-// 		if recv, ok := peer.recvs[fromUid]; ok && !recv.Closed() {
-// 			candiate = recv.candidate
-// 		}
-
-// 	} else {
-// 		if !peer.pub.Closed() {
-// 			candiate = peer.pub.candidate
-// 		}
-
-// 	}
-// 	return
-// }
+func (r *Room) KickPublisher(uid int64) {
+	if peer, ok := r.peers[uid]; ok {
+		if peer.pub != nil {
+			peer.pub.Close()
+			peer.pub = nil
+		}
+		if len(peer.subs) == 0 {
+			delete(r.peers, uid)
+		}
+	}
+}
