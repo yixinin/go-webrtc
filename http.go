@@ -42,16 +42,13 @@ func GetAnswer(c *gin.Context) {
 		c.String(400, err.Error())
 		return
 	}
-	// answer, err := DefaultRoom.AddPeer(p.Uid, p.FromUid, p.Offer)
-	// if err != nil {
-	// 	log.Println(err)
+	answer, err := DefaultRoom.AddPeer(p.Uid, p.FromUid, p.Offer)
+	if err != nil {
+		log.Println(err)
 
-	// 	c.String(400, err.Error())
-	// 	return
-	// }
-	offerChan <- p.Offer
-
-	answer := <-answerChan
+		c.String(400, err.Error())
+		return
+	}
 	c.String(200, answer)
 }
 
@@ -62,28 +59,25 @@ func SendCandidate(c *gin.Context) {
 		log.Println(err)
 		return
 	}
-	// log.Println(string(buf))
 
 	var p SendCandidateModel
 	err = json.Unmarshal(buf, &p)
-	// err = c.ShouldBind(&p)
 	if err != nil {
 		log.Println(err)
 		c.String(400, err.Error())
 		return
 	}
-	// log.Println("send candidate", p.Candidate)
-	// err = DefaultRoom.AddCandidate(p.Uid, p.Candidate)
-	// if err != nil {
-	// 	log.Println(err)
-	// 	c.String(400, err.Error())
-	// 	return
-	// }
 	if p.Candidate == nil {
 		c.String(400, "fail")
 		return
 	}
-	candChan <- p.Candidate
+	// log.Println("send candidate", p.Candidate)
+	err = DefaultRoom.AddCandidate(p.Uid, p.Candidate)
+	if err != nil {
+		log.Println(err)
+		c.String(400, err.Error())
+		return
+	}
 	c.String(200, "success")
 }
 
@@ -183,4 +177,56 @@ func ReflectCand(c *gin.Context) {
 	DefaultReflect.candidates = append(DefaultReflect.candidates, &ReflectCandidate{
 		candidate: p.Candidate,
 	})
+}
+
+var offerChan = make(chan string)
+var answerChan = make(chan string)
+var candChan = make(chan *CandiateModel, 100)
+var pollCandChan = make(chan *CandiateModel, 100)
+
+func SendOfferChan(c *gin.Context) {
+	var p GetAnswerModel
+	err := c.ShouldBind(&p)
+	if err != nil {
+		log.Println(err)
+		c.String(400, err.Error())
+		return
+	}
+	offerChan <- p.Offer
+
+	answer := <-answerChan
+	c.String(200, answer)
+}
+
+func SendCandChan(c *gin.Context) {
+	var buf, err = ioutil.ReadAll(c.Request.Body)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	// log.Println(string(buf))
+
+	var p SendCandidateModel
+	err = json.Unmarshal(buf, &p)
+	if err != nil {
+		log.Println(err)
+		c.String(400, err.Error())
+		return
+	}
+	if p.Candidate == nil {
+		c.String(400, "fail")
+		return
+	}
+	candChan <- p.Candidate
+	c.String(200, "success")
+}
+
+func PollCandChan(c *gin.Context) {
+	select {
+	case cand := <-pollCandChan:
+		c.JSON(200, cand)
+	default:
+		c.String(200, "")
+	}
+
 }

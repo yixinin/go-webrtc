@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"math/rand"
 	"time"
 
@@ -13,8 +14,6 @@ import (
 func init() {
 	rand.Seed(time.Now().Unix())
 }
-
-var candChan = make(chan *CandiateModel, 100)
 
 func broadcast() {
 
@@ -32,13 +31,13 @@ func broadcast() {
 		panic(err)
 	}
 
-	mediaCodecs := mediaEngine.GetCodecsByKind(webrtc.RTPCodecTypeVideo)
-	if len(mediaCodecs) == 0 {
-		mediaCodecs = mediaEngine.GetCodecsByKind(webrtc.RTPCodecTypeAudio)
-	}
-	if len(mediaCodecs) == 0 {
-		panic("no codec in offer")
-	}
+	// mediaCodecs := mediaEngine.GetCodecsByKind(webrtc.RTPCodecTypeVideo)
+	// if len(mediaCodecs) == 0 {
+	// 	mediaCodecs = mediaEngine.GetCodecsByKind(webrtc.RTPCodecTypeAudio)
+	// }
+	// if len(mediaCodecs) == 0 {
+	// 	panic("no codec in offer")
+	// }
 
 	// Create the API object with the MediaEngine
 	api := webrtc.NewAPI(webrtc.WithMediaEngine(mediaEngine))
@@ -60,34 +59,31 @@ func broadcast() {
 
 	peerConnection.OnICECandidate(func(c *webrtc.ICECandidate) {
 		if c != nil {
-			log.Println(c.ToJSON())
+			var candJson = c.ToJSON()
+			var cand = &CandiateModel{
+				Candidate: candJson.Candidate,
+			}
+			if candJson.SDPMLineIndex != nil {
+				cand.SdpMlineindex = *candJson.SDPMLineIndex
+			}
+			if candJson.SDPMid != nil {
+				cand.SdpMid = *candJson.SDPMid
+			}
+			pollCandChan <- cand
 		}
 	})
 
 	// Allow us to receive 1 video track
-	// if _, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo); err != nil {
-	// 	log.Println("no video codec")
-	// 	if _, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeAudio); err != nil {
-	// 		panic(err)
-	// 	}
-	// }
-
-	//play back
-
-	localTrack, err := peerConnection.NewTrack(mediaCodecs[0].PayloadType, rand.Uint32(), "video", "pion")
+	_, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo)
 	if err != nil {
-		panic(err)
+		log.Println("no video codec")
+
 	}
-	_, err = peerConnection.AddTrack(localTrack)
-	if err != nil {
-		panic(err)
+	if _, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeAudio); err != nil {
+		log.Println("no audio codec")
 	}
 
-	err = peerConnection.SetRemoteDescription(offer)
-	if err != nil {
-		panic(err)
-	}
-	// localTrackChan := make(chan *webrtc.Track)
+	localTrackChan := make(chan *webrtc.Track)
 	// Set a handler for when a new remote track starts, this just distributes all our packets
 	// to connected peers
 	peerConnection.OnTrack(func(remoteTrack *webrtc.Track, receiver *webrtc.RTPReceiver) {
@@ -104,37 +100,22 @@ func broadcast() {
 
 		fmt.Printf("Track has started, of type %d: %s \n", remoteTrack.PayloadType(), remoteTrack.Codec().Name)
 		// // Create a local track, all our SFU clients will be fed via this track
-		// localTrack, newTrackErr := peerConnection.NewTrack(remoteTrack.PayloadType(), remoteTrack.SSRC(), "video", "pion")
-		// if newTrackErr != nil {
-		// 	panic(newTrackErr)
-		// }
-		// localTrackChan <- localTrack
+		localTrack, newTrackErr := peerConnection.NewTrack(remoteTrack.PayloadType(), remoteTrack.SSRC(), "video", "pion")
+		if newTrackErr != nil {
+			panic(newTrackErr)
+		}
+		localTrackChan <- localTrack
 
-		// rtpBuf := make([]byte, 1400)
-		// for {
-		// 	i, readErr := remoteTrack.Read(rtpBuf)
-		// 	if readErr != nil {
-		// 		panic(readErr)
-		// 	}
-
-		// 	// ErrClosedPipe means we don't have any subscribers, this is ok if no peers have connected yet
-		// 	if _, err = localTrack.Write(rtpBuf[:i]); err != nil && err != io.ErrClosedPipe {
-		// 		panic(err)
-		// 	}
-		// }
+		rtpBuf := make([]byte, 1400)
 		for {
-			// Read RTP packets being sent to Pion
-			rtp, readErr := remoteTrack.ReadRTP()
+			i, readErr := remoteTrack.Read(rtpBuf)
 			if readErr != nil {
 				panic(readErr)
 			}
 
-			// Replace the SSRC with the SSRC of the outbound track.
-			// The only change we are making replacing the SSRC, the RTP packets are unchanged otherwise
-			rtp.SSRC = localTrack.SSRC()
-
-			if writeErr := localTrack.WriteRTP(rtp); writeErr != nil {
-				panic(writeErr)
+			// ErrClosedPipe means we don't have any subscribers, this is ok if no peers have connected yet
+			if _, err = localTrack.Write(rtpBuf[:i]); err != nil && err != io.ErrClosedPipe {
+				panic(err)
 			}
 		}
 	})
@@ -144,6 +125,10 @@ func broadcast() {
 	})
 
 	// Set the remote SessionDescription
+	err = peerConnection.SetRemoteDescription(offer)
+	if err != nil {
+		panic(err)
+	}
 
 	// Create answer
 	answer, err := peerConnection.CreateAnswer(nil)
@@ -166,6 +151,7 @@ FOR:
 
 		select {
 		case cand := <-candChan:
+			log.Println(cand)
 			peerConnection.AddICECandidate(
 				webrtc.ICECandidateInit{
 					SDPMid:        &cand.SdpMid,
@@ -181,7 +167,7 @@ FOR:
 	}
 	log.Println("waiting for output track")
 
-	// localTrack := <-localTrackChan
+	localTrack := <-localTrackChan
 	for {
 		log.Println("start accept subscribler")
 		sdp := <-offerChan

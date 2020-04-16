@@ -10,9 +10,6 @@ import (
 	"github.com/pion/webrtc/v2"
 )
 
-var offerChan = make(chan string)
-var answerChan = make(chan string)
-
 // var CandidateChan = make(chan CandiateModel)
 
 type Reflect struct {

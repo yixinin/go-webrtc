@@ -112,11 +112,12 @@
         function getMedia() {
             (navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia)({
                 audio: true,
-                video: false
+                video: true
             }, gotUserMedia, didntGetUserMedia)
         }
         function didntGetUserMedia() {
             console.log('cound not get user media')
+            pc.addTransceiver('video')
         }
         function gotUserMedia(stream) {
             myVideoStream = stream
@@ -131,9 +132,9 @@
         function createPC() {
 
             config = new Array();
-            // config.push({
-            //     url: 'stun:stun.ideasip.com'
-            // })
+            config.push({
+                url: 'stun:stun.ideasip.com'
+            })
             config.push({
                 url: 'stun:stun.voipgate.com:3478'
             })
@@ -141,7 +142,8 @@
             console.log('config: ', JSON.stringify(config))
             pc = new RTCPeerConnection({
                 iceServers: config,
-                sdpSemantics: 'plan-b',
+                // sdpSemantics: 'plan-b',
+                sdpSemantics: 'unified-plan',
             })
             pc.onicecandidate = onIceCandidate
             pc.onaddstream = onRemoteStreamAdded

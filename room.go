@@ -37,7 +37,7 @@ func NewRoom(c *Config) *Room {
 				URLs: c.Stun,
 			},
 		},
-		SDPSemantics: webrtc.SDPSemanticsPlanB,
+		SDPSemantics: webrtc.SDPSemanticsUnifiedPlan,
 	}
 	// m := webrtc.MediaEngine{}
 	// var api = webrtc.NewAPI(webrtc.WithMediaEngine(m))
@@ -62,8 +62,12 @@ func (r *Room) AddPeer(uid, fromUid int64, sdp string) (answerSdp string, err er
 	if err != nil {
 		return
 	}
+	var hasVideo = true
+	var hasAudio = true
 	mediaCodecs = m.GetCodecsByKind(webrtc.RTPCodecTypeVideo)
 	if len(mediaCodecs) == 0 {
+		hasVideo = false
+		hasAudio = true
 		mediaCodecs = m.GetCodecsByKind(webrtc.RTPCodecTypeAudio)
 	}
 	// }
@@ -88,10 +92,7 @@ func (r *Room) AddPeer(uid, fromUid int64, sdp string) (answerSdp string, err er
 			log.Println(err)
 		}
 
-		if fromUid == 0 {
-			//TODO 测试 将视频流返回给发布者
-			// peerConnection.AddTrack(outputTrack)
-		}
+		//TODO 测试 将视频流返回给发布者
 
 		peer.Update(peerConnection, outputTrack)
 		r.OnTrack(uid, peerConnection)
@@ -102,12 +103,24 @@ func (r *Room) AddPeer(uid, fromUid int64, sdp string) (answerSdp string, err er
 			if ok {
 				peer.AddTrack(fromUid, targetPeer.outputTrack)
 			}
+		} else {
+			peerConnection.AddTrack(outputTrack)
+			if hasVideo {
+				// peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo)
+			}
+			if hasAudio {
+				// peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeAudio)
+			}
+
 		}
 
 		r.peers[uid] = peer
 	}
 
 	// r.OnIceCandidate(uid, fromUid, peer)
+	peerConnection.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
+		log.Println("connection state changed", state)
+	})
 
 	peerConnection.SetRemoteDescription(offer)
 	answer, err := peerConnection.CreateAnswer(nil)
@@ -169,7 +182,7 @@ func (r *Room) OnTrack(uid int64, conn *webrtc.PeerConnection) {
 			rtp.SSRC = outputTrack.SSRC()
 
 			if writeErr := outputTrack.WriteRTP(rtp); writeErr != nil {
-				log.Println(writeErr)
+
 			}
 		}
 	})

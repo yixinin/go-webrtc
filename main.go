@@ -37,6 +37,10 @@ func main() {
 	g.POST("/reflect", ReflectF)
 	g.POST("/reflectCand", ReflectCand)
 
+	g.POST("/sendOfferChan", SendOfferChan)
+	g.POST("/sendCandChan", SendCandChan)
+	g.GET("/pollCandChan", PollCandChan)
+
 	g.StaticFS("/static", http.Dir("static"))
 	g.StaticFile("/index", "static/index.html")
 	g.StaticFile("/index.html", "static/index.html")
