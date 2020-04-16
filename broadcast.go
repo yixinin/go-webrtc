@@ -50,7 +50,10 @@ func broadcast() {
 
 	// Allow us to receive 1 video track
 	if _, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo); err != nil {
-		panic(err)
+		if _, er = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeAudio); err != nil {
+			panic(err)
+		}
+
 	}
 
 	localTrackChan := make(chan *webrtc.Track)
