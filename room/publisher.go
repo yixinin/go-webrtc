@@ -1,4 +1,4 @@
-package main
+package room
 
 import "github.com/pion/webrtc/v2"
 
@@ -22,9 +22,9 @@ func (p *Publisher) Close() {
 	}
 	if p.conn.ConnectionState() == webrtc.PeerConnectionStateConnected ||
 		p.conn.ConnectionState() == webrtc.PeerConnectionStateConnecting {
-		p.closed = true
 		p.conn.Close()
 	}
+	p.closed = true
 }
 
 func (p *Publisher) Closed() bool {

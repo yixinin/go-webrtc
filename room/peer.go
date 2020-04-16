@@ -1,6 +1,10 @@
-package main
+package room
 
-import "github.com/pion/webrtc/v2"
+import (
+	"log"
+
+	"github.com/pion/webrtc/v2"
+)
 
 type Peer struct {
 	pub    *Publisher            //上传音视频流
@@ -8,33 +12,6 @@ type Peer struct {
 	uid    int64
 	closed bool
 }
-
-// type PeerConnection struct {
-// 	uid         int64
-// 	conn        *webrtc.PeerConnection
-// 	outputTrack *webrtc.Track
-// 	recvTracks  map[int64]*webrtc.Track
-// }
-
-// func NewPeerConnection(uid int64) *PeerConnection {
-// 	return &PeerConnection{
-// 		uid:        uid,
-// 		recvTracks: make(map[int64]*webrtc.Track),
-// 	}
-// }
-
-// func (p *PeerConnection) Update(conn *webrtc.PeerConnection, track *webrtc.Track) {
-// 	p.conn = conn
-// 	p.outputTrack = track
-// }
-
-// func (p *PeerConnection) AddTrack(fromUid int64, track *webrtc.Track) {
-// 	if p.conn == nil {
-// 		return
-// 	}
-// 	p.conn.AddTrack(track)
-// 	p.recvTracks[fromUid] = track
-// }
 
 func (p *Peer) Closed() bool {
 	if p == nil {
@@ -62,13 +39,26 @@ func NewPeer(uid int64) *Peer {
 }
 
 func (p *Peer) AddPublisher(conn *webrtc.PeerConnection) {
+	if p.pub != nil {
+		p.pub.Close()
+	}
 	p.pub = NewPublisher(conn)
 }
-func (p *Peer) AddTrack(track *webrtc.Track) {
-	p.pub.outputTracks = append(p.pub.outputTracks, track)
+func (p *Peer) AddPubOutputTrack(track *webrtc.Track) {
+	if p.pub != nil && p.pub.outputTracks != nil {
+		p.pub.outputTracks = append(p.pub.outputTracks, track)
+	} else {
+		log.Println("peer conn closed")
+	}
+
 }
 
 func (p *Peer) AddSubscriber(fromUid int64, conn *webrtc.PeerConnection, senders []*webrtc.RTPSender) {
+	if sub, ok := p.subs[fromUid]; ok {
+		if sub != nil {
+			sub.Close()
+		}
+	}
 	p.subs[fromUid] = NewSubscriber(fromUid, conn, senders)
 }
 

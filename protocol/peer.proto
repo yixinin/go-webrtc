@@ -1,0 +1,112 @@
+syntax = "proto3";
+package protocol; 
+
+//请求answer
+message OpenPeerReq{
+    int32  roomId =1;
+    string key = 2;
+    string sdp = 3;
+    int64 fromUid = 4;
+    bool videoOn =5;
+    bool audioOn = 6;
+}
+
+message OpenPeerAck{
+    string sdp = 1;
+}
+
+
+message Candidate{
+    string  candidate     =1;
+    uint32 sdpMlineindex  =2;
+    string sdpMid         =3;
+}
+
+//添加客户端candidate
+message AddCandidateReq{
+    string key = 1;
+    int64 fromUid =2;
+    Candidate candidate=3;
+    int32 roomId = 4;
+}
+
+message AddCandidateAck{
+    int32 code =1;
+}
+
+
+//推送服务端candidate
+message NotifyCandidate{
+    int64 uid = 1;
+    int64 fromUid =2;
+    Candidate candidate=3;
+}
+
+
+
+message CreateRoomReq{
+    string key = 1;
+}
+
+message CreateRoomAck{
+    int32 id =1; //房间id
+}
+
+message CloseRoomReq{
+    int32 id = 1;
+}
+message CloseRoomAck{
+    int32 code = 1;
+}
+
+//断开连接
+message KickReq{
+    int64 uid = 1;
+    bool pub =2; 
+    bool sub = 3;
+    int32 roomId = 4;
+}
+
+message KickAck{
+    int32 code = 1;
+}
+
+
+//如果音视频都不接收则断开连接 下次开启时再连接
+message ControlReq{
+    int64 uid = 1; 
+    int64 fromUid = 2;
+    bool videoOn = 3;
+    bool audioOn = 4;
+    int32 roomId = 5;
+}
+
+message ControlAck{
+    bool disconnected = 1; //是否断开连接
+}
+
+service RoomService{
+    rpc CreateRoom(CreateRoomReq)returns (CreateRoomAck){
+    }
+
+    rpc CloseRoom(CloseRoomReq)returns (CloseRoomAck){ 
+    }
+
+    rpc OpenPeer(OpenPeerReq)returns (OpenPeerAck){
+
+    }
+
+    rpc AddCandidate(AddCandidateReq)returns (AddCandidateAck){
+
+    }
+
+    rpc Kick(KickReq) returns (KickAck){
+
+    }
+
+    rpc Control(ControlReq)returns (ControlAck){
+
+    }
+
+    
+}

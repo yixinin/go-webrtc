@@ -1,22 +1,25 @@
 package main
 
 import (
+	"go-webrtc/config"
+	"go-webrtc/protocol"
+	"go-webrtc/room"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"google.golang.org/grpc"
 )
 
-var DefaultRoom *Room
-
 func main() {
-	var config = new(Config)
+	var config = new(config.Config)
 	config.Stun = []string{
 		"stun:stun.voipgate.com:3478",
 		"stun:stun.ideasip.com",
 	}
 
-	DefaultRoom = NewRoom(config)
-	// go DefaultReflect.HandleReflect()
+	var srv = grpc.NewServer()
+	var server = NewServer(config)
+	protocol.RegisterRoomServiceServer(srv, server)
 	HandleHttp()
 }
 
@@ -27,12 +30,12 @@ func HandleHttp() {
 	g.StaticFile("/index.html", "static/index.html")
 	g.StaticFile("/broadcast", "static/broadcast.html")
 
-	g.POST("/getAnswer", SendOffer)
-	g.POST("/sendCandidate", SendCandidate)
+	g.POST("/getAnswer", room.SendOffer)
+	g.POST("/sendCandidate", room.SendCandidate)
 
-	g.POST("/sendOfferChan", SendOfferChan)
-	g.POST("/sendCandChan", SendCandChan)
-	g.GET("/pollCandChan", PollCandChan)
+	g.POST("/sendOfferChan", room.SendOfferChan)
+	g.POST("/sendCandChan", room.SendCandChan)
+	g.GET("/pollCandChan", room.PollCandChan)
 
 	g.Run("0.0.0.0:8000")
 }

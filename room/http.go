@@ -1,12 +1,15 @@
-package main
+package room
 
 import (
 	"encoding/json"
+	"go-webrtc/protocol"
 	"io/ioutil"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-acme/lego/v3/log"
 )
+
+var DefaultRoom *Room
 
 type SendOfferModel struct {
 	Offer   string `form:"offer" json:"offer"`
@@ -16,10 +19,10 @@ type SendOfferModel struct {
 }
 
 type SendCandidateModel struct {
-	Uid       int64          `form:"uid" json:"uid"`
-	Candidate *CandiateModel `form:"candidate" json:"candidate"`
-	FromUid   int64          `form:"fromUid" json:"fromUid"`
-	RoomId    int32          `form:"roomId" json:"roomId"`
+	Uid       int64               `form:"uid" json:"uid"`
+	Candidate *protocol.Candidate `form:"candidate" json:"candidate"`
+	FromUid   int64               `form:"fromUid" json:"fromUid"`
+	RoomId    int32               `form:"roomId" json:"roomId"`
 }
 
 type GetCandidateModel struct {
@@ -102,7 +105,7 @@ type SdpModel struct {
 
 var offerChan = make(chan string)
 var answerChan = make(chan string)
-var candChan = make(chan *CandiateModel, 100)
+var candChan = make(chan *protocol.Candidate, 100)
 var pollCandChan = make(chan *CandiateModel, 100)
 
 func SendOfferChan(c *gin.Context) {

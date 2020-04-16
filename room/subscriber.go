@@ -1,4 +1,4 @@
-package main
+package room
 
 import "github.com/pion/webrtc/v2"
 
@@ -6,19 +6,23 @@ type Subscriber struct {
 	fromUid int64
 	conn    *webrtc.PeerConnection
 	senders []*webrtc.RTPSender
-	closed  bool
+
+	subscribled bool
+	closed      bool
 }
 
 func NewSubscriber(fromUid int64, conn *webrtc.PeerConnection, senders []*webrtc.RTPSender) *Subscriber {
 	return &Subscriber{
-		fromUid: fromUid,
-		conn:    conn,
-		senders: senders,
+		fromUid:     fromUid,
+		conn:        conn,
+		senders:     senders,
+		subscribled: true,
 	}
 }
 
 func (s *Subscriber) AddTrack(track *webrtc.Track) error {
-	_, err := s.conn.AddTrack(track)
+	sender, err := s.conn.AddTrack(track)
+	s.senders = append(s.senders, sender)
 	return err
 }
 func (s *Subscriber) Closed() bool {
@@ -44,7 +48,7 @@ func (s *Subscriber) Close() {
 	}
 	if s.conn.ConnectionState() == webrtc.PeerConnectionStateConnected ||
 		s.conn.ConnectionState() == webrtc.PeerConnectionStateConnecting {
-		s.closed = true
 		s.conn.Close()
 	}
+	s.closed = true
 }

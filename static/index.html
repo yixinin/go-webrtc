@@ -118,6 +118,18 @@
         function didntGetUserMedia() {
             console.log('cound not get user media')
             pc.addTransceiver('video')
+            navigator.mediaDevices.getDisplayMedia({
+                video: true
+            }).then(stream => {
+                myVideoStream = stream
+                haveLocalMedia = true
+                //we have a stream, attach it to a feedback video element
+                myVideo.srcObject = myVideoStream
+                attachMediaIfReady()
+            }, error => {
+                console.log("Unable to acquire screen capture", error);
+            });
+
         }
         function gotUserMedia(stream) {
             myVideoStream = stream

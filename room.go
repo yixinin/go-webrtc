@@ -1,227 +1,91 @@
 package main
 
 import (
-	"errors"
-	"fmt"
-	"io"
+	"context"
+	"go-webrtc/protocol"
+	"go-webrtc/room"
 	"log"
-	"strconv"
-	"time"
 
-	"github.com/pion/rtcp"
-	"github.com/pion/webrtc/v2"
+	"go-lib/utils"
 )
 
-const (
-	rtcpPLIInterval = time.Second * 3
-)
+func (s *Server) CreateRoom(ctx context.Context, req *protocol.CreateRoomReq) (*protocol.CreateRoomAck, error) {
+	var ack = &protocol.CreateRoomAck{}
+	var id = utils.GetRoomID()
 
-type Room struct {
-	Id  int32
-	Key string
-	// api                  *webrtc.API
-	peers map[int64]*Peer
+	var room = room.NewRoom(s.config, id, req.Key)
 
-	// candidates map[int64]map[string]bool
-	config webrtc.Configuration
+	s.rooms[id] = room
+	return ack, nil
 }
-
-func NewRoom(c *Config) *Room {
-	peerConnectionConfig := webrtc.Configuration{
-		ICEServers: []webrtc.ICEServer{
-			{
-				URLs: c.Stun,
-			},
-		},
-		SDPSemantics: webrtc.SDPSemanticsUnifiedPlan,
+func (s *Server) CloseRoom(ctx context.Context, req *protocol.CloseRoomReq) (*protocol.CloseRoomAck, error) {
+	var ack = &protocol.CloseRoomAck{}
+	if room, ok := s.rooms[req.Id]; ok {
+		room.Close()
+		delete(s.rooms, room.Id)
 	}
-	// m := webrtc.MediaEngine{}
-	// var api = webrtc.NewAPI(webrtc.WithMediaEngine(m))
-	return &Room{
-		// api:                  api,
-		// candidates: make(map[int64]map[string]bool),
-		config: peerConnectionConfig,
-		peers:  make(map[int64]*Peer),
-	}
+	return ack, nil
 }
-
-func (r *Room) AddPeer(uid, fromUid int64, sdp string) (answerSdp string, err error) {
-	offer := webrtc.SessionDescription{
-		SDP:  sdp,
-		Type: webrtc.SDPTypeOffer,
-	}
-	var isPublisher = fromUid == 0
-	m := webrtc.MediaEngine{}
-	var mediaCodecs []*webrtc.RTPCodec
-	//发布
-	// if fromUid == 0 {
-	err = m.PopulateFromSDP(offer)
-	if err != nil {
-		return
-	}
-	mediaCodecs = m.GetCodecsByKind(webrtc.RTPCodecTypeVideo)
-	if len(mediaCodecs) == 0 {
-		mediaCodecs = m.GetCodecsByKind(webrtc.RTPCodecTypeAudio)
-	}
-	// }
-
-	var api = webrtc.NewAPI(webrtc.WithMediaEngine(m))
-
-	// Create a new RTCPeerConnection
-	peerConnection, err := api.NewPeerConnection(r.config)
-	if err != nil {
-		return
-	}
-
-	var peer, ok = r.peers[uid]
+func (s *Server) OpenPeer(ctx context.Context, req *protocol.OpenPeerReq) (*protocol.OpenPeerAck, error) {
+	var ack = &protocol.OpenPeerAck{}
+	room, ok := s.rooms[req.RoomId]
 	if !ok {
-		peer = NewPeer(uid)
-
-		r.peers[uid] = peer
+		return ack, nil
 	}
-
-	if isPublisher {
-		peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo)
-		peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeAudio)
-
-		peer.AddPublisher(peerConnection)
-
-		r.OnTrack(uid, peerConnection)
-	} else {
-		//添加目标视频源
-
-		targetPeer, ok := r.peers[fromUid]
-		var senders = make([]*webrtc.RTPSender, 0, len(targetPeer.pub.outputTracks))
-		if ok {
-			for _, track := range targetPeer.pub.outputTracks {
-				if track != nil {
-					var sender *webrtc.RTPSender
-					sender, err = peerConnection.AddTrack(track)
-					if err != nil {
-						log.Println(err)
-						return
-					}
-					if sender != nil {
-						senders = append(senders, sender)
-					}
-				}
-			}
-		}
-
-		peer.AddSubscriber(fromUid, peerConnection, senders)
+	var uid = room.GetUid(req.Key)
+	if uid == 0 {
+		return ack, nil
 	}
-
-	// r.OnIceCandidate(uid, fromUid, peer)
-	peerConnection.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
-		log.Println("connection state changed", state)
-	})
-
-	peerConnection.SetRemoteDescription(offer)
-	answer, err := peerConnection.CreateAnswer(nil)
+	sdp, err := room.AddPeer(uid, req.FromUid, req.Sdp)
 	if err != nil {
-		return
+		log.Println(err)
 	}
-	peerConnection.SetLocalDescription(answer)
-	//TODO 将answer发送给客户端
-	answerSdp = answer.SDP
-	return
+	ack.Sdp = sdp
+	return ack, err
 }
-
-func (r *Room) AddCandidate(uid, fromUid int64, m *CandiateModel) (err error) {
-	if m == nil {
-		err = errors.New("nil candidate")
-		return
-	}
-	var candidate = webrtc.ICECandidateInit{
-		Candidate:     m.Candidate,
-		SDPMLineIndex: &m.SdpMlineindex,
-		SDPMid:        &m.SdpMid,
-	}
-
-	var peer, ok = r.peers[uid]
+func (s *Server) AddCandidate(ctx context.Context, req *protocol.AddCandidateReq) (*protocol.AddCandidateAck, error) {
+	var ack = &protocol.AddCandidateAck{}
+	room, ok := s.rooms[req.RoomId]
 	if !ok {
-		return errors.New("you are not int room")
+		ack.Code = 1
+		return ack, nil
 	}
-	if fromUid != 0 {
-		if sub, ok := peer.subs[fromUid]; ok && !sub.Closed() {
-			sub.conn.AddICECandidate(candidate)
-		}
+	var uid = room.GetUid(req.Key)
+	if uid == 0 {
+		ack.Code = 2
+		return ack, nil
+	}
+	err := room.AddCandidate(uid, req.FromUid, req.Candidate)
+	if err != nil {
+		ack.Code = 3
+	}
+	return ack, err
+}
+func (s *Server) Kick(ctx context.Context, req *protocol.KickReq) (*protocol.KickAck, error) {
+	var ack = &protocol.KickAck{}
+	var room, ok = s.rooms[req.RoomId]
+	if !ok {
+		ack.Code = 1
+		return ack, nil
+	}
+	if req.Pub && !req.Sub {
+		room.KickPublisher(req.Uid)
 	} else {
-		if !peer.pub.Closed() {
-			peer.pub.conn.AddICECandidate(candidate)
-		}
+		room.Kick(req.Uid)
 	}
-	return
-}
-
-func (r *Room) OnTrack(uid int64, conn *webrtc.PeerConnection) {
-	conn.OnTrack(func(inputTrack *webrtc.Track, receiver *webrtc.RTPReceiver) {
-		go func() {
-			ticker := time.NewTicker(time.Second * 3)
-			for range ticker.C {
-				errSend := conn.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: inputTrack.SSRC()}})
-				if errSend != nil {
-					fmt.Println(errSend)
-				}
-			}
-		}()
-
-		fmt.Printf("Track has started, of type %d: %s \n", inputTrack.PayloadType(), inputTrack.Codec().Name)
-		//创建track
-		var outputTrack, err = conn.NewTrack(inputTrack.PayloadType(), inputTrack.SSRC(), strconv.FormatInt(uid, 10), "output-"+inputTrack.Label())
-		if err != nil {
-			log.Println("create output track err", err)
-			return
-		}
-
-		r.peers[uid].AddTrack(outputTrack)
-
-		rtpBuf := make([]byte, 1400)
-		for {
-			i, readErr := inputTrack.Read(rtpBuf)
-			if readErr != nil {
-				log.Println(err)
-				return
-			}
-
-			// ErrClosedPipe means we don't have any subscribers, this is ok if no peers have connected yet
-			if _, err = outputTrack.Write(rtpBuf[:i]); err != nil && err != io.ErrClosedPipe {
-				log.Println(err)
-				return
-			}
-		}
-	})
-}
-
-func (r *Room) ControlSubscriber(uid, fromUid int64, videoOn, audioOn bool) {
-	if peer, ok := r.peers[uid]; ok {
-		if sub, ok := peer.subs[fromUid]; ok {
-			if !videoOn && !audioOn {
-				sub.Close()
-				delete(peer.subs, fromUid)
-			} else {
-				for _, sender := range sub.senders {
-					if !audioOn && sender.Track().Codec().Type == webrtc.RTPCodecTypeAudio {
-						sub.conn.RemoveTrack(sender)
-					}
-					if !videoOn && sender.Track().Codec().Type == webrtc.RTPCodecTypeVideo {
-						sub.conn.RemoveTrack(sender)
-					}
-				}
-			}
-
-		}
+	//关闭房间
+	if room.Closed() {
+		delete(s.rooms, req.RoomId)
 	}
+	return ack, nil
 }
-
-func (r *Room) KickPublisher(uid int64) {
-	if peer, ok := r.peers[uid]; ok {
-		if peer.pub != nil {
-			peer.pub.Close()
-			peer.pub = nil
-		}
-		if len(peer.subs) == 0 {
-			delete(r.peers, uid)
-		}
+func (s *Server) Control(ctx context.Context, req *protocol.ControlReq) (*protocol.ControlAck, error) {
+	var ack = &protocol.ControlAck{}
+	var room, ok = s.rooms[req.RoomId]
+	if !ok {
+		ack.Disconnected = false
+		return ack, nil
 	}
+	room.Control(req.Uid, req.FromUid, req.VideoOn, req.AudioOn)
+	return ack, nil
 }

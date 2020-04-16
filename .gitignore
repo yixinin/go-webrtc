@@ -1,4 +1,4 @@
-rtc.exe
-rtc
-__debug_bin
+*debug*
 go.sum
+*.exe
+go-webrtc
