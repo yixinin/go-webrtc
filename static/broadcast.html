@@ -33,7 +33,8 @@
         var signalingChannel, key, id,
             haveLocalMedia = false,
             weWaited = false,
-            videoStream, video1,
+            video1Stream, video1,
+            video2Stream, video2,
             doNothing = function () { },
             pc,
             constraints = {
@@ -71,15 +72,21 @@
         }
 
         //发送candidate
-        function send_candidate() {
-            for (let i in cands) {
-                var req = {
+        function send_candidate(cand) {
+            // for (let i in cands) {
+            //     var req = {
+            //         "uid": randUid,
+            //         "candidate": cands[i]
+            //     }
+            //     console.log(cands[i])
+            //     post('/sendCandidate', req);
+            // }
+            var req = {
                     "uid": randUid,
-                    "candidate": cands[i]
+                    "candidate": cand
                 }
-                console.log(cands[i])
+                console.log(cand)
                 post('/sendCandidate', req);
-            }
 
         }
 
@@ -106,10 +113,10 @@
             console.log('cound not get user media')
         }
         function gotUserMedia(stream) {
-            videoStream = stream
+            video1Stream = stream
             haveLocalMedia = true
             // 向我显示我的本地视频
-            video1.srcObject = videoStream
+            video1.srcObject = video1Stream
             // 等待pc创建完毕
             attachMediaIfReady()
         }
@@ -129,10 +136,15 @@
             pc = new RTCPeerConnection({
                 iceServers: config,
                 sdpSemantics: 'unified-plan',
+                // sdpSemantics: 'plan-b',
             })
             pc.onicecandidate = onIceCandidate
-            pc.onaddstream = onRemoteStreamAdded
-            pc.onremovestream = onRemoteStreamRemoved
+            // pc.onaddstream = onRemoteStreamAdded
+            pc.ontrack = function(e){
+                var el = document.getElementById("video2")
+                el.srcObject = e.streams[0]
+                el.autoplay=true
+            }
 
             // 等待媒体就绪
             attachMediaIfReady()
@@ -146,18 +158,19 @@
                     "sdpMlineindex": e.candidate.sdpMLineIndex,
                     "candidate": e.candidate.candidate
                 }
-                if (cands.length == 0) {
-                    setTimeout("send_candidate()", "4000");
-                }
-                cands.push(cand)
+                // if (cands.length == 0) {
+                //     setTimeout("send_candidate()", "4000");
+                // }
+                // cands.push(cand)
+                send_candidate(cand)
             }
         }
 
         // 如果我们浏览器检测到另一端加入了媒体流，则将其显示在屏幕上
         function onRemoteStreamAdded(e) {
-            videoStream = e.stream
-            console.log('video: ', video1)
-            video1.srcObject = videoStream
+            video2Stream = e.stream
+            console.log('video: ', video2)
+            video2.srcObject = video2Stream
         }
 
         // 远端移除流，这里不做操作
@@ -171,7 +184,8 @@
 
         // 将本地流添加至对等连接
         function attachMedia() {
-            pc.addStream(videoStream)
+            console.log("add stream to peerconn")
+            pc.addStream(video1Stream)
         }
 
         // 生成一个offer
@@ -179,6 +193,7 @@
             document.getElementById('uid').innerText = "uid:" + randUid
             createPC()
             video1 = document.getElementById('video1')
+            video2 = document.getElementById('video2')
             getMedia()
 
             pc.createOffer(gotDescription, doNothing, constraints)
@@ -187,6 +202,7 @@
             document.getElementById('uid').innerText = "uid:" + randUid
             createPC()
             video1 = document.getElementById('video1')
+            video2 = document.getElementById('video2')
             pc.addTransceiver('video')
             pc.createOffer(gotDescription, doNothing, constraints)
         }
@@ -210,7 +226,7 @@
 
     <p id="uid"></p>
     <video id="video1" width="160" height="120" autoplay muted></video> <br />
-
+    <video id="video2" width="160" height="120", autoplay muted></video> <br />
     <button id="pub" onclick="pub()"> Publish a Broadcast </button>
     <button id="sub" onclick="sub()"> Join a Broadcast </button><br />
 
