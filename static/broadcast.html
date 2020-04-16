@@ -58,8 +58,9 @@
             $.post('/getAnswer',
                 req,
                 function (data, status) {
-                    console.log("get answer " + status);
+                    
                     if (data) {
+                        console.log("get answer " + status + data.length);
                         var answer = {
                             sdp: data,
                             type: "answer"

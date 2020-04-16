@@ -10,6 +10,10 @@ import (
 	"github.com/pion/webrtc/v2"
 )
 
+func init() {
+	rand.Seed(time.Now().Unix())
+}
+
 var candChan = make(chan *CandiateModel, 100)
 
 func broadcast() {
@@ -39,21 +43,26 @@ func broadcast() {
 	// Create the API object with the MediaEngine
 	api := webrtc.NewAPI(webrtc.WithMediaEngine(mediaEngine))
 
-	peerConnectionConfig := webrtc.Configuration{
+	config := webrtc.Configuration{
 		ICEServers: []webrtc.ICEServer{
 			{
-				// URLs: []string{"stun:stun.l.google.com:19302"},
-				URLs: []string{"stun:stun.ideasip.com", "stun:stun.voipgate.com:3478"},
+				URLs: []string{"stun:stun.voipgate.com:3478", "stun:stun.ideasip.com"},
 			},
 		},
 		SDPSemantics: webrtc.SDPSemanticsUnifiedPlan,
 	}
 
 	// Create a new RTCPeerConnection
-	peerConnection, err := api.NewPeerConnection(peerConnectionConfig)
+	peerConnection, err := api.NewPeerConnection(config)
 	if err != nil {
 		panic(err)
 	}
+
+	peerConnection.OnICECandidate(func(c *webrtc.ICECandidate) {
+		if c != nil {
+			log.Println(c.ToJSON())
+		}
+	})
 
 	// Allow us to receive 1 video track
 	// if _, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo); err != nil {
@@ -64,16 +73,16 @@ func broadcast() {
 	// }
 
 	//play back
-	// {
+
 	localTrack, err := peerConnection.NewTrack(mediaCodecs[0].PayloadType, rand.Uint32(), "video", "pion")
 	if err != nil {
 		panic(err)
 	}
-	// _, err = peerConnection.AddTrack(localTrack)
-	// if err != nil {
-	// 	panic(err)
-	// }
-	// }
+	_, err = peerConnection.AddTrack(localTrack)
+	if err != nil {
+		panic(err)
+	}
+
 	err = peerConnection.SetRemoteDescription(offer)
 	if err != nil {
 		panic(err)
@@ -157,7 +166,6 @@ FOR:
 
 		select {
 		case cand := <-candChan:
-			log.Println("add cand")
 			peerConnection.AddICECandidate(
 				webrtc.ICECandidateInit{
 					SDPMid:        &cand.SdpMid,
@@ -183,7 +191,7 @@ FOR:
 		}
 
 		// Create a new PeerConnection
-		peerConnection, err := api.NewPeerConnection(peerConnectionConfig)
+		peerConnection, err := api.NewPeerConnection(config)
 		if err != nil {
 			panic(err)
 		}
@@ -229,7 +237,7 @@ FOR:
 					},
 				)
 			default:
-				if peerConnection.ICEConnectionState() == webrtc.ICEConnectionStateCompleted {
+				if peerConnection.ICEConnectionState() == webrtc.ICEConnectionStateConnected {
 					break FOR1
 				}
 
