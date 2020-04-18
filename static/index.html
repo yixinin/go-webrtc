@@ -37,8 +37,8 @@
         var signalingChannel, key, id,
             haveLocalMedia = false,
             weWaited = false,
-            myVideoStream, myVideo,
-            yourVideoStream, yourVideo,
+            v1VideoStream, v1Video,
+            v2VideoStream, v2Video,
             doNothing = function () { },
             pc,
             constraints = {
@@ -51,11 +51,12 @@
         // 自动开始获取本地媒体
         window.onload = function () {
             document.getElementById('uid').innerText = "uid:" + randUid
-            createPC()
+            v1Video = document.getElementById('v1Video')
+            v2Video = document.getElementById('v2Video')
+        }
 
-            myVideo = document.getElementById('myVideo')
-            yourVideo = document.getElementById('yourVideo')
-            getMedia()
+        function getLocalVideo(fromUid) {
+            createPC(fromUid)
         }
         //发送offer
         function send_offer(offer) {
@@ -90,7 +91,7 @@
                     "uid": randUid,
                     "candidate": cands[i]
                 }
-                console.log(cands[i])
+                // console.log(cands[i])
                 post('/sendCandidate', req);
             }
 
@@ -109,40 +110,48 @@
             });
         }
         // 获取本地媒体
-        function getMedia() {
-            (navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia)({
-                audio: true,
-                video: true
-            }, gotUserMedia, didntGetUserMedia)
-        }
-        function didntGetUserMedia() {
-            console.log('cound not get user media')
-            pc.addTransceiver('video')
-            navigator.mediaDevices.getDisplayMedia({
-                video: true
-            }).then(stream => {
-                myVideoStream = stream
-                haveLocalMedia = true
-                //we have a stream, attach it to a feedback video element
-                myVideo.srcObject = myVideoStream
-                attachMediaIfReady()
-            }, error => {
-                console.log("Unable to acquire screen capture", error);
-            });
+        function getMedia(fromUid) {
+            // (navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia)({
+            //     audio: true,
+            //     video: true
+            // }, gotUserMedia, didntGetUserMedia)
+            if (fromUid == 0) {
+                navigator.getUserMedia(
+                    {
+                        audio: true,
+                        video: true
+                    }, stream => {
+                        v1VideoStream = stream
+                        haveLocalMedia = true
+                        v1Video.srcObject = v1VideoStream
+                        if (pc) {
+                            pc.addStream(v1VideoStream)
+                            console.log("add local stream to pc (webcam)")
+                        }
+                    }, err => {
+                        navigator.mediaDevices.getDisplayMedia({
+                            video: true
+                        }).then(stream => {
+                            v1VideoStream = stream
+                            haveLocalMedia = true
+                            v1Video.srcObject = v1VideoStream
+                            if (pc) {
+                                pc.addStream(v1VideoStream)
+                                console.log("add local stream to pc (screen)")
+                            }
 
+                        }, error => {
+                            console.log("Unable to acquire screen capture", error);
+                        });
+                    }
+                );
+            }
+            pc.addTransceiver('video')
         }
-        function gotUserMedia(stream) {
-            myVideoStream = stream
-            haveLocalMedia = true
-            // 向我显示我的本地视频
-            myVideo.srcObject = myVideoStream
-            // 等待pc创建完毕
-            attachMediaIfReady()
-        }
+
 
         // 创建对等连接，即实例化peerConnection
-        function createPC() {
-
+        function createPC(fromUid) {
             config = new Array();
             config.push({
                 url: 'stun:stun.ideasip.com'
@@ -159,10 +168,10 @@
             })
             pc.onicecandidate = onIceCandidate
             pc.onaddstream = onRemoteStreamAdded
-            pc.onremovestream = onRemoteStreamRemoved
+            // pc.onremovestream = onRemoteStreamRemoved
 
             // 等待媒体就绪
-            attachMediaIfReady()
+            getMedia(fromUid)
         }
 
         // 如果当前浏览器有另一个候选项，将其发送给对等端
@@ -184,30 +193,21 @@
 
         // 如果我们浏览器检测到另一端加入了媒体流，则将其显示在屏幕上
         function onRemoteStreamAdded(e) {
-            yourVideoStream = e.stream
-            console.log('yourVideo: ', yourVideo)
-            yourVideo.srcObject = yourVideoStream
+            v2VideoStream = e.stream
+            // console.log('v2Video: ', v2Video)
+            if (v1Video.srcObject) {
+                v2Video.srcObject = v2VideoStream
+            } else {
+                v1Video.srcObject = v2VideoStream
+            }
+
         }
 
-        // 远端移除流，这里不做操作
-        function onRemoteStreamRemoved(e) {
-
-        }
-
-        function attachMediaIfReady() {
-            if (pc && haveLocalMedia) attachMedia()
-        }
-
-        // 将本地流添加至对等连接
-        function attachMedia() {
-            pc.addStream(myVideoStream)
-            // if (queryParams && queryParams['call'] && !weWaited) {
-            // call()
-            // }
-        }
 
         // 生成一个offer
         function call() {
+            var fromUid = document.getElementById("fromUid").value
+            getLocalVideo(fromUid)
             pc.createOffer(gotDescription, doNothing, constraints)
         }
 
@@ -234,41 +234,20 @@
         </p>
     </div>
 
-    <div id="scMessage" style="float:right;display:none">
-        <p>信道消息：
-            <input type="text" width="100%" name="message" id="message"
-                onkeyup="if (event.keyCode == 13){send();return false;}" />
-            <button id="send" style="display:none" onclick="send()">发送</button>
-        </p>
-
-        <p>响应：
-            <span id="response"></span>
-        </p>
-    </div>
-
     <br />
 
     <div style="width:30%;vertical-align:top">
         <div>
-            <video autoplay="autoplay" id="myVideo" controls muted="true" />
+            <video autoplay="autoplay" id="v1Video" controls muted="true" />
         </div>
-        <p>
-            <b>发出的消息</b>
-            <br />
-            <textarea id="outmessages" style="width:100%" rows="30"></textarea>
-        </p>
     </div>
 
     <div style="width:30%;vertical-align:top;margin-left:200px;">
         <div>
-            <video id="yourVideo" autoplay="autoplay" controls muted="true" />
+            <video id="v2Video" autoplay="autoplay" controls muted="true" />
         </div>
-        <p>
-            <b>收到的消息</b>
-            <br />
-            <textarea id="inmessages" style="width:100%" rows="30"></textarea>
-        </p>
     </div>
+
 
 </body>
 

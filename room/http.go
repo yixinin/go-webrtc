@@ -2,14 +2,73 @@ package room
 
 import (
 	"encoding/json"
+	"go-webrtc/config"
 	"go-webrtc/protocol"
 	"io/ioutil"
+	"net/http"
+	"sync"
+
+	"go-lib/utils"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-acme/lego/v3/log"
 )
 
-var DefaultRoom *Room
+type HttpServer struct {
+	sync.RWMutex
+	config *config.Config
+	rooms  map[int32]*Room
+	room   *Room
+	g      *gin.Engine
+}
+
+func NewHttpServer() *HttpServer {
+	var c = &config.Config{
+		Stun: []string{
+			"stun:stun.voipgate.com:3478",
+			"stun:stun.ideasip.com",
+		},
+	}
+	var room = NewRoom(c, 1024, "hgfedcba87654321")
+	var rooms = make(map[int32]*Room, 10)
+	rooms[1024] = room
+
+	var hs = &HttpServer{
+		config: c,
+		room:   room,
+		rooms:  rooms,
+		g:      gin.Default(),
+	}
+	hs.HandleHttp()
+	return hs
+}
+
+func init() {
+	NewHttpServer()
+}
+
+// func init() {
+// 	DefaultConfig = &config.Config{
+// 		Stun: []string{
+// 			"stun:stun.voipgate.com:3478",
+// 			"stun:stun.ideasip.com",
+// 		},
+// 	}
+// 	DefaultRoom = NewRoom(DefaultConfig, 1024, "hgfedcba87654321")
+// 	HandleHttp()
+// }
+
+func (hs *HttpServer) HandleHttp() {
+
+	hs.g.StaticFS("/static", http.Dir("static"))
+	hs.g.StaticFile("/index", "static/index.html")
+	hs.g.StaticFile("/index.html", "static/index.html")
+
+	hs.g.POST("/getAnswer", hs.SendOffer)
+	hs.g.POST("/sendCandidate", hs.SendCandidate)
+
+	hs.g.Run("0.0.0.0:8000")
+}
 
 type SendOfferModel struct {
 	Offer   string `form:"offer" json:"offer"`
@@ -37,7 +96,7 @@ type CandiateModel struct {
 	SdpMid        string `json:"sdpMid" form:"sdpMid"`
 }
 
-func SendOffer(c *gin.Context) {
+func (hs *HttpServer) SendOffer(c *gin.Context) {
 	var p SendOfferModel
 	err := c.ShouldBind(&p)
 	if err != nil {
@@ -45,7 +104,8 @@ func SendOffer(c *gin.Context) {
 		c.String(400, err.Error())
 		return
 	}
-	answer, err := DefaultRoom.AddPeer(p.Uid, p.FromUid, p.Offer)
+	room := hs.GetRoom(p.RoomId)
+	answer, err := room.AddPeer(p.Uid, p.FromUid, p.Offer)
 	if err != nil {
 		log.Println(err)
 
@@ -55,7 +115,7 @@ func SendOffer(c *gin.Context) {
 	c.String(200, answer)
 }
 
-func SendCandidate(c *gin.Context) {
+func (hs *HttpServer) SendCandidate(c *gin.Context) {
 
 	var buf, err = ioutil.ReadAll(c.Request.Body)
 	if err != nil {
@@ -74,8 +134,8 @@ func SendCandidate(c *gin.Context) {
 		c.String(400, "fail")
 		return
 	}
-	// log.Println("send candidate", p.Candidate)
-	err = DefaultRoom.AddCandidate(p.Uid, p.FromUid, p.Candidate)
+	room := hs.GetRoom(p.RoomId)
+	err = room.AddCandidate(p.Uid, p.FromUid, p.Candidate)
 	if err != nil {
 		log.Println(err)
 		c.String(400, err.Error())
@@ -84,73 +144,30 @@ func SendCandidate(c *gin.Context) {
 	c.String(200, "success")
 }
 
-type SendSdpModel struct {
-	Uid int64    `json:"uid"`
-	Sdp SdpModel `json:"sdp"`
+type CreateRoomModel struct {
 }
 
-type PollSdpModel struct {
-	FromUid int64  `json:"fromUid"`
-	SdpType string `json:"sdpType"`
-}
-
-type PollCandModel struct {
-	FromUid int64 `json:"fromUid"`
-}
-
-type SdpModel struct {
-	Sdp     string `json:"sdp"`
-	SdpType string `json:"sdpType"`
-}
-
-var offerChan = make(chan string)
-var answerChan = make(chan string)
-var candChan = make(chan *protocol.Candidate, 100)
-var pollCandChan = make(chan *CandiateModel, 100)
-
-func SendOfferChan(c *gin.Context) {
-	var p SendOfferModel
-	err := c.ShouldBind(&p)
-	if err != nil {
-		log.Println(err)
-		c.String(400, err.Error())
-		return
+func (hs *HttpServer) CreateRoom(c *gin.Context) {
+	var id = utils.GetRoomID()
+	hs.Lock()
+	defer hs.Unlock()
+	for {
+		if _, ok := hs.rooms[id]; ok {
+			id = utils.GetRoomID()
+		} else {
+			break
+		}
 	}
-	offerChan <- p.Offer
-
-	answer := <-answerChan
-	c.String(200, answer)
+	var room = NewRoom(hs.config, id, "hgfedcba87654321")
+	hs.rooms[id] = room
 }
 
-func SendCandChan(c *gin.Context) {
-	var buf, err = ioutil.ReadAll(c.Request.Body)
-	if err != nil {
-		log.Println(err)
-		return
+func (hs *HttpServer) GetRoom(id int32) *Room {
+	hs.RLock()
+	defer hs.RUnlock()
+	room, ok := hs.rooms[id]
+	if !ok {
+		room = hs.room
 	}
-	// log.Println(string(buf))
-
-	var p SendCandidateModel
-	err = json.Unmarshal(buf, &p)
-	if err != nil {
-		log.Println(err)
-		c.String(400, err.Error())
-		return
-	}
-	if p.Candidate == nil {
-		c.String(400, "fail")
-		return
-	}
-	candChan <- p.Candidate
-	c.String(200, "success")
-}
-
-func PollCandChan(c *gin.Context) {
-	select {
-	case cand := <-pollCandChan:
-		c.JSON(200, cand)
-	default:
-		c.String(200, "")
-	}
-
+	return room
 }

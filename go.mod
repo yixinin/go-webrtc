@@ -2,7 +2,7 @@ module go-webrtc
 
 go 1.13
 
-replace go-lib => ../live-chat/go-lib
+replace go-lib => ../go-lib
 
 require (
 	github.com/gin-gonic/gin v1.6.2

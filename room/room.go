@@ -94,8 +94,9 @@ func (r *Room) AddPeer(uid, fromUid int64, sdp string) (answerSdp string, err er
 		//添加目标视频源
 
 		targetPeer, ok := r.peers[fromUid]
-		var senders = make([]*webrtc.RTPSender, 0, len(targetPeer.pub.outputTracks))
+		var senders []*webrtc.RTPSender
 		if ok {
+			senders = make([]*webrtc.RTPSender, 0, len(targetPeer.pub.outputTracks))
 			for _, track := range targetPeer.pub.outputTracks {
 				if track != nil {
 					var sender *webrtc.RTPSender
@@ -107,8 +108,11 @@ func (r *Room) AddPeer(uid, fromUid int64, sdp string) (answerSdp string, err er
 					if sender != nil {
 						senders = append(senders, sender)
 					}
+					log.Println("add track", sender.Track().Codec().Type)
 				}
 			}
+		} else {
+			log.Println("target not in room", fromUid)
 		}
 
 		peer.AddSubscriber(fromUid, peerConnection, senders)
