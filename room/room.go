@@ -142,7 +142,7 @@ func (r *Room) AddPeer(uid, fromUid int64, sdp string) (answerSdp string, err er
 	peerConnection.OnICECandidate(func(c *webrtc.ICECandidate) {
 		if c != nil {
 			var cand = c.ToJSON()
-			log.Printf("%+v", cand)
+
 			var m = &protocol.Candidate{
 				Candidate: cand.Candidate,
 			}
@@ -254,10 +254,12 @@ func (r *Room) AddCandidate(uid, fromUid int64, m *protocol.Candidate) (err erro
 	if fromUid != 0 {
 		if sub, ok := peer.subs[fromUid]; ok && !sub.Closed() {
 			sub.conn.AddICECandidate(candidate)
+			log.Println("add peer candidate", candidate)
 		}
 	} else {
 		if !peer.pub.Closed() {
 			peer.pub.conn.AddICECandidate(candidate)
+			log.Println("add peer candidate", candidate)
 		}
 	}
 	return
@@ -270,14 +272,14 @@ func (r *Room) SyncPeerCandidate(uid, fromUid int64, conn *webrtc.PeerConnection
 			if sub, ok := c.subs[fromUid]; ok && len(sub.peer) > 0 {
 				for _, v := range sub.peer {
 					conn.AddICECandidate(v)
-					log.Println("add peer candidate")
+					log.Println("add peer candidate", v)
 				}
 			}
 		} else {
 			if c.pub != nil && len(c.pub.peer) > 0 {
 				for _, v := range c.pub.peer {
 					conn.AddICECandidate(v)
-					log.Println("add peer candidate")
+					log.Println("add peer candidate", v)
 				}
 			}
 
