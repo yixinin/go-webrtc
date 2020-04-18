@@ -123,11 +123,23 @@ func (r *Room) AddPeer(uid, fromUid int64, sdp string) (answerSdp string, err er
 	// r.OnIceCandidate(uid, fromUid, peer)
 	peerConnection.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
 		log.Println("connection state changed", state)
-		if state == webrtc.PeerConnectionStateDisconnected {
+		if state == webrtc.PeerConnectionStateDisconnected ||
+			state == webrtc.PeerConnectionStateClosed ||
+			state == webrtc.ICETransportStateFailed {
 			//TODO删除当前连接
 			if _, ok := r.peers[uid]; ok {
 				if isPublisher {
 					r.peers[uid].pub = nil
+					for _, peer := range r.peers {
+						if len(peer.subs) > 0 {
+							if sub, ok := peer.subs[uid]; ok {
+								if sub != nil {
+									peer.subs[uid].Close()
+								}
+								delete(peer.subs, uid)
+							}
+						}
+					}
 				} else {
 					if len(r.peers[uid].subs) > 0 {
 						if _, ok := r.peers[uid].subs[fromUid]; ok {
