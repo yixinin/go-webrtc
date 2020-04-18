@@ -146,10 +146,10 @@ func (r *Room) AddPeer(uid, fromUid int64, sdp string) (answerSdp string, err er
 			var m = &protocol.Candidate{
 				Candidate: cand.Candidate,
 			}
-			if cand.SDPMLineIndex != nil {
+			if cand.SDPMid != nil {
 				m.SdpMid = *cand.SDPMid
 			}
-			if cand.SDPMid != nil {
+			if cand.SDPMLineIndex != nil {
 				m.SdpMlineindex = uint32(*cand.SDPMLineIndex)
 			}
 			if fromUid == 0 {
