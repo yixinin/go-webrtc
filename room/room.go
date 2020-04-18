@@ -160,7 +160,7 @@ func (r *Room) OnTrack(uid int64, conn *webrtc.PeerConnection) {
 			}
 		}()
 
-		fmt.Printf("Track has started, of type %d: %s \n", inputTrack.PayloadType(), inputTrack.Codec().Name)
+		log.Printf("Track has started, of type %d: %s \n", inputTrack.PayloadType(), inputTrack.Codec().Type)
 		//创建track
 		var outputTrack, err = conn.NewTrack(inputTrack.PayloadType(), inputTrack.SSRC(), strconv.FormatInt(uid, 10), "output-"+inputTrack.Label())
 		if err != nil {

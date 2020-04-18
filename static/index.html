@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="X-UA-Compatible" content="ie=edge">
-    <title>视频聊天</title>
+    <title>WebRTC SFU 测试</title>
     <style>
         video {
             width: 320px;
@@ -15,6 +15,10 @@
 
         div {
             display: inline-block;
+        }
+
+        body {
+            text-align: center;
         }
     </style>
 </head>
@@ -37,10 +41,11 @@
         var signalingChannel, key, id,
             haveLocalMedia = false,
             weWaited = false,
-            v1VideoStream, v1Video,
-            v2VideoStream, v2Video,
+            v1VideoStream, v1Video, v1played,
+            v2VideoStream, v2Video, v2played,
+            v3VideoStream, v3Video, v3played,
             doNothing = function () { },
-            pc,
+            // pc,
             constraints = {
                 mandatory: {
                     OfferToReceiveAudio: true,
@@ -50,16 +55,19 @@
 
         // 自动开始获取本地媒体
         window.onload = function () {
-            document.getElementById('uid').innerText = "uid:" + randUid
+            document.getElementById('uid').innerText = "your uid: " + randUid
             v1Video = document.getElementById('v1Video')
             v2Video = document.getElementById('v2Video')
+            v3Video = document.getElementById('v3Video')
+
+            v1played = false
+            v2played = false
+            v3played = false
         }
 
-        function getLocalVideo(fromUid) {
-            createPC(fromUid)
-        }
+
         //发送offer
-        function send_offer(offer) {
+        function send_offer(offer, pc) {
             var fromUid = document.getElementById('fromUid').value
 
             var req = {
@@ -110,48 +118,92 @@
             });
         }
         // 获取本地媒体
-        function getMedia(fromUid) {
+        function getWebcamMedia(fromUid, pc) {
             // (navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia)({
             //     audio: true,
             //     video: true
             // }, gotUserMedia, didntGetUserMedia)
-            if (fromUid == 0) {
-                navigator.getUserMedia(
-                    {
-                        audio: true,
-                        video: true
-                    }, stream => {
-                        v1VideoStream = stream
-                        haveLocalMedia = true
-                        v1Video.srcObject = v1VideoStream
-                        if (pc) {
-                            pc.addStream(v1VideoStream)
-                            console.log("add local stream to pc (webcam)")
-                        }
-                    }, err => {
-                        navigator.mediaDevices.getDisplayMedia({
-                            video: true
-                        }).then(stream => {
-                            v1VideoStream = stream
-                            haveLocalMedia = true
-                            v1Video.srcObject = v1VideoStream
-                            if (pc) {
-                                pc.addStream(v1VideoStream)
-                                console.log("add local stream to pc (screen)")
-                            }
 
-                        }, error => {
-                            console.log("Unable to acquire screen capture", error);
-                        });
+            navigator.getUserMedia(
+                {
+                    audio: true,
+                    video: true
+                }, stream => {
+                    addLocalSteam(stream)
+                    if (pc) {
+                        pc.addStream(v1VideoStream)
+                        pc.addTransceiver('video')
+                        pc.createOffer(desc => {
+                            pc.setLocalDescription(desc)
+                            send_offer(desc, pc)
+                        }, doNothing, constraints)
                     }
-                );
-            }
-            pc.addTransceiver('video')
+                },
+                err => {
+                    alert("Unable to acquire webcam capture:" + err)
+                    console.log("Unable to acquire webcam capture", err);
+                }
+            );
         }
 
+        function getScreenMedia(fromUid, pc) {
+            if (fromUid != 0) {
+                return
+            }
+            navigator.mediaDevices.getDisplayMedia({
+                video: true
+            }).then(stream => {
+                addLocalSteam(stream)
+                if (pc) {
+                    pc.addStream(v1VideoStream)
+                    pc.addTransceiver('video')
+                    pc.createOffer(desc => {
+                        pc.setLocalDescription(desc)
+                        send_offer(desc, pc)
+                    }, doNothing, constraints)
+                }
 
+            }, err => {
+                alert("Unable to acquire screen capture:" + err)
+                console.log("Unable to acquire screen capture", err);
+            });
+        }
+
+        function addLocalSteam(stream) {
+            if (!v1played) {
+                v1VideoStream = stream
+                v1Video.srcObject = v1VideoStream
+                v1played = true
+                document.getElementById("v1-title").innerHTML = "local:"
+                return
+            }
+
+            if (!v2played) {
+                v2VideoStream = stream
+                v2Video.srcObject = v2VideoStream
+                v2played = true
+                document.getElementById("v2-title").innerHTML = "local:"
+                return
+            }
+
+            if (!v3played) {
+                v3VideoStream = stream
+                v3Video.srcObject = v3VideoStream
+                v3played = true
+                document.getElementById("v3-title").innerHTML = "local:"
+                return
+            }
+        }
+
+        function noMedia(pc) {
+            pc.addTransceiver('video')
+            pc.createOffer(desc => {
+                pc.setLocalDescription(desc)
+                send_offer(desc, pc)
+            }, doNothing, constraints)
+        }
         // 创建对等连接，即实例化peerConnection
-        function createPC(fromUid) {
+        function createPC(fromUid, isWebcam, recvOnly) {
             config = new Array();
             config.push({
                 url: 'stun:stun.ideasip.com'
@@ -161,17 +213,22 @@
             })
 
             console.log('config: ', JSON.stringify(config))
-            pc = new RTCPeerConnection({
+            let pc = new RTCPeerConnection({
                 iceServers: config,
                 // sdpSemantics: 'plan-b',
                 sdpSemantics: 'unified-plan',
             })
             pc.onicecandidate = onIceCandidate
             pc.onaddstream = onRemoteStreamAdded
-            // pc.onremovestream = onRemoteStreamRemoved
-
-            // 等待媒体就绪
-            getMedia(fromUid)
+            if (recvOnly) {
+                noMedia(pc)
+                return
+            }
+            if (isWebcam) {
+                getWebcamMedia(fromUid, pc)
+            } else {
+                getScreenMedia(fromUid, pc)
+            }
         }
 
         // 如果当前浏览器有另一个候选项，将其发送给对等端
@@ -183,7 +240,7 @@
                     "candidate": e.candidate.candidate
                 }
                 if (cands.length == 0) {
-                    setTimeout("send_candidate()", "4000");
+                    // setTimeout("send_candidate()", "4000");
                 }
                 cands.push(cand)
 
@@ -193,58 +250,91 @@
 
         // 如果我们浏览器检测到另一端加入了媒体流，则将其显示在屏幕上
         function onRemoteStreamAdded(e) {
-            v2VideoStream = e.stream
-            // console.log('v2Video: ', v2Video)
-            if (v1Video.srcObject) {
+            var fromUid = document.getElementById("fromUid").value
+            if (fromUid == 0) {
+                return
+            }
+
+            if (!v1played) {
+                v1VideoStream = e.stream
+                v1Video.srcObject = v1VideoStream
+                v1played = true
+                document.getElementById("v1-title").innerHTML = fromUid + ":"
+                return
+            }
+
+            if (!v2played) {
+                v2VideoStream = e.stream
                 v2Video.srcObject = v2VideoStream
-            } else {
-                v1Video.srcObject = v2VideoStream
+                v2played = true
+                document.getElementById("v2-title").innerHTML = fromUid + ":"
+                return
+            }
+
+            if (!v3played) {
+                v3VideoStream = e.stream
+                v3Video.srcObject = v3VideoStream
+                v3played = true
+                document.getElementById("v3-title").innerHTML = fromUid + ":"
+                return
             }
 
         }
 
 
         // 生成一个offer
-        function call() {
+        function call(t) {
+            if (t == 0) {
+                console.log("sub", t)
+                createPC(fromUid, false, true)
+                return
+            }
+
+            console.log("pub", t)
             var fromUid = document.getElementById("fromUid").value
-            getLocalVideo(fromUid)
-            pc.createOffer(gotDescription, doNothing, constraints)
+            createPC(0, t == 1, false)
         }
 
-        // 应答会话描述，生成answer
-        function answer() {
-            pc.createAnswer(gotDescription, doNothing, constraints)
-        }
 
-        // 一旦获取到了会话描述，就将其作为本地描述，然后将其发送至另一端的浏览器
-        function gotDescription(localDesc) {
-            pc.setLocalDescription(localDesc)
-            send_offer(localDesc)
-        }
 
     </script>
 
     <div id="setup">
-        <p>WebRTC 视频聊天demo测试</p>
 
         <p id="uid"></p>
         <p>
-            <input id="fromUid">
-            <button id="call" onclick="call()">呼叫</button>
+            <button id="webcam" onclick="call(1)">publish webcam</button>
+            <button id="screen" onclick="call(2)">publish screen</button>
+            <br />
+            <p style="font-size: small;"> peer uid:
+                <br />
+                <input id="fromUid">
+                <button id="recv" onclick="call(0)">subscrible</button>
+            </p>
+
         </p>
     </div>
 
     <br />
 
-    <div style="width:30%;vertical-align:top">
+    <div style="width:20%;vertical-align:top">
         <div>
+            <p id="v1-title"> video1:</p>
             <video autoplay="autoplay" id="v1Video" controls muted="true" />
         </div>
     </div>
 
-    <div style="width:30%;vertical-align:top;margin-left:200px;">
+    <div style="width:20%;vertical-align:top;margin-left:100px;">
         <div>
+            <p id="v2-title"> video2:</p>
             <video id="v2Video" autoplay="autoplay" controls muted="true" />
+        </div>
+    </div>
+
+    <div style="width:20%;vertical-align:top;margin-left:100px;">
+        <div>
+            <p id="v3-title"> video3:</p>
+            <video id="v3Video" autoplay="autoplay" controls muted="true" />
         </div>
     </div>
 

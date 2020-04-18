@@ -65,7 +65,7 @@ func (hs *HttpServer) HandleHttp() {
 	hs.g.StaticFile("/index.html", "static/index.html")
 
 	hs.g.POST("/getAnswer", hs.SendOffer)
-	hs.g.POST("/sendCandidate", hs.SendCandidate)
+	// hs.g.POST("/sendCandidate", hs.SendCandidate)
 
 	hs.g.Run("0.0.0.0:8000")
 }
