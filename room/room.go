@@ -294,9 +294,13 @@ func (r *Room) GetCandidate(uid, fromUid int64) []*protocol.Candidate {
 					}
 					if v.SDPMLineIndex != nil {
 						item.SdpMlineindex = uint32(*v.SDPMLineIndex)
+					} else {
+						item.SdpMlineindex = 0
 					}
 					if v.SDPMid != nil {
 						item.SdpMid = *v.SDPMid
+					} else {
+						item.SdpMid = ""
 					}
 					items = append(items, item)
 				}
