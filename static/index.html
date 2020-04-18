@@ -276,6 +276,9 @@
                 poll_candidate(pc)
                 if (pc.connectionState == "connected" || pc.connectionState == "failed") {
                     clearInterval(timer)
+                    if (pc.connectionState == "failed") {
+                        alert("connect failed, pls try again")
+                    }
                 }
             }, 1000)
         }
