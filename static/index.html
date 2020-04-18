@@ -116,8 +116,10 @@
         }
 
         function poll_candidate(pc) {
+            var fromUid = document.getElementById('fromUid').value
+            var p = "uid=" + randUid + "&fromUid=" + fromUid
             $.get(
-                "/pollCandidate",
+                "/pollCandidate?" + p,
                 function (data, status) {
                     pc.addIceCandidate({
                         candidate: data.candidate,
