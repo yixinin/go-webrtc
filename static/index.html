@@ -273,7 +273,7 @@
 
             let timer = setInterval(function () {
                 poll_candidate(pc)
-                if (pc.connectionState == "connected") {
+                if (pc.connectionState == "connected" || pc.connectionState == "failed") {
                     clearInterval(timer)
                 }
             }, 1000)
