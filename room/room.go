@@ -235,8 +235,10 @@ func (r *Room) AddCandidate(uid, fromUid int64, m *protocol.Candidate) (err erro
 		r.candidates[uid] = NewPeerCandidate()
 	}
 	if fromUid != 0 {
+		log.Println("save peer candidate, uid=", uid, "fromUid=", fromUid)
 		r.candidates[uid].AddSub(fromUid, m, false)
 	} else {
+		log.Println("save peer candidate, uid=", uid)
 		r.candidates[uid].AddPub(m, false)
 	}
 
