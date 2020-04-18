@@ -120,12 +120,27 @@
             var p = "uid=" + randUid + "&fromUid=" + fromUid
             $.get(
                 "/pollCandidate?" + p,
-                function (data, status) {
-                    pc.addIceCandidate(new RTCIceCandidate({
-                        candidate: data.candidate,
-                        sdpMLineIndex: data.sdpMLineIndex,
-                        sdpMid: data.sdpMid
-                    }))
+                function (datas, status) {
+                    if (status == 'success') {
+                        console.log("total candidates", datas.length)
+                        for (let i in datas) {
+                            let data = datas[i]
+                            let smi = data.sdpMLineIndex
+                            if (smi == null) {
+                                smi = ""
+                            }
+                            let sm = data.sdpMid
+                            if (sm == null) {
+                                sm = 0
+                            }
+                            var cand = new RTCIceCandidate({
+                                candidate: data.candidate,
+                                sdpMLineIndex: smi,
+                                sdpMid: sm
+                            })
+                            pc.addIceCandidate(cand)
+                        }
+                    }
                 }
             )
         }

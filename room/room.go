@@ -249,7 +249,7 @@ func (r *Room) AddCandidate(uid, fromUid int64, m *protocol.Candidate) (err erro
 
 	var peer, ok = r.peers[uid]
 	if !ok {
-		return errors.New("you are not int room")
+		return nil
 	}
 	if fromUid != 0 {
 		if sub, ok := peer.subs[fromUid]; ok && !sub.Closed() {

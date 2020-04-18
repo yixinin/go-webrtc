@@ -1,10 +1,8 @@
 package room
 
 import (
-	"encoding/json"
 	"go-webrtc/config"
 	"go-webrtc/protocol"
-	"io/ioutil"
 	"net/http"
 	"sync"
 
@@ -115,21 +113,22 @@ func (hs *HttpServer) SendOffer(c *gin.Context) {
 
 func (hs *HttpServer) SendCandidate(c *gin.Context) {
 
-	var buf, err = ioutil.ReadAll(c.Request.Body)
-	if err != nil {
-		log.Println(err)
-		return
-	}
+	// var buf, err = ioutil.ReadAll(c.Request.Body)
+	// if err != nil {
+	// 	log.Println(err)
+	// 	return
+	// }
 
 	var p SendCandidateModel
-	err = json.Unmarshal(buf, &p)
+	// err = json.Unmarshal(buf, &p)
+	err := c.ShouldBindJSON(&p)
 	if err != nil {
 		log.Println(err)
 		c.String(400, err.Error())
 		return
 	}
 	if p.Candidate == nil {
-		c.String(400, "fail")
+		c.String(400, "candidate is null")
 		return
 	}
 	room := hs.GetRoom(p.RoomId)
