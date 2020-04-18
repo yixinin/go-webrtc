@@ -105,10 +105,11 @@
 
         }
 
-        function send_candidate(cand) {
+        function send_candidate(cand, fromUid) {
             var req = {
                 "uid": randUid,
-                "candidate": cand
+                "candidate": cand,
+                "fromUid": fromUid
             }
 
             post('/sendCandidate', req);
@@ -290,8 +291,9 @@
                 // if (cands.length == 0) {
                 //     setTimeout("send_candidate()", "8000");
                 // }
-                cands.push(cand)
-                send_candidate(cand)
+                // cands.push(cand)
+                var fromUid = Number(document.getElementById("fromUid").value)
+                send_candidate(cand, fromUid)
 
             }
         }

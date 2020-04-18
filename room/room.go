@@ -234,7 +234,7 @@ func (r *Room) AddCandidate(uid, fromUid int64, m *protocol.Candidate) (err erro
 	if _, ok := r.candidates[uid]; !ok {
 		r.candidates[uid] = NewPeerCandidate()
 	}
-	if fromUid == 0 {
+	if fromUid != 0 {
 		r.candidates[uid].AddSub(fromUid, m, false)
 	} else {
 		r.candidates[uid].AddPub(m, false)
@@ -270,12 +270,14 @@ func (r *Room) SyncPeerCandidate(uid, fromUid int64, conn *webrtc.PeerConnection
 			if sub, ok := c.subs[fromUid]; ok && len(sub.peer) > 0 {
 				for _, v := range sub.peer {
 					conn.AddICECandidate(v)
+					log.Println("add peer candidate", v)
 				}
 			}
 		} else {
 			if c.pub != nil && len(c.pub.peer) > 0 {
 				for _, v := range c.pub.peer {
 					conn.AddICECandidate(v)
+					log.Println("add peer candidate", v)
 				}
 			}
 

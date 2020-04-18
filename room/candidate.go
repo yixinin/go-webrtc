@@ -33,6 +33,12 @@ func (p *PeerCandidate) AddPub(candidate *protocol.Candidate, local bool) {
 		SDPMLineIndex: &smi,
 		SDPMid:        &candidate.SdpMid,
 	}
+	if p.pub != nil {
+		p.pub = &PeerCandidateItem{
+			local: make([]webrtc.ICECandidateInit, 0, 10),
+			peer:  make([]webrtc.ICECandidateInit, 0, 10),
+		}
+	}
 	if local {
 		p.pub.local = append(p.pub.local, cand)
 	} else {
