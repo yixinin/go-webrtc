@@ -5,13 +5,11 @@ import (
 	"go-webrtc/protocol"
 	"go-webrtc/room"
 	"log"
-
-	"go-lib/utils"
 )
 
 func (s *Server) CreateRoom(ctx context.Context, req *protocol.CreateRoomReq) (*protocol.CreateRoomAck, error) {
 	var ack = &protocol.CreateRoomAck{}
-	var id = utils.GetRoomID()
+	var id = room.GetRoomID()
 
 	var room = room.NewRoom(s.config, id, req.Key)
 

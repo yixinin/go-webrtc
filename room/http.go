@@ -8,8 +8,6 @@ import (
 	"net/http"
 	"sync"
 
-	"go-lib/utils"
-
 	"github.com/gin-gonic/gin"
 	"github.com/go-acme/lego/v3/log"
 )
@@ -148,12 +146,12 @@ type CreateRoomModel struct {
 }
 
 func (hs *HttpServer) CreateRoom(c *gin.Context) {
-	var id = utils.GetRoomID()
+	var id = GetRoomID()
 	hs.Lock()
 	defer hs.Unlock()
 	for {
 		if _, ok := hs.rooms[id]; ok {
-			id = utils.GetRoomID()
+			id = GetRoomID()
 		} else {
 			break
 		}
