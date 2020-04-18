@@ -172,12 +172,14 @@ func (hs *HttpServer) PollCandidate(c *gin.Context) {
 	if p.FromUid == 0 && p.Uid == 0 {
 		log.Println("pls fill uid and fromUid")
 		c.String(400, "")
+		return
 	}
 	var room = hs.GetRoom(p.RoomId)
 	var cand = room.GetCandidate(p.Uid, p.FromUid)
 	if cand == nil {
 		log.Println("no candidates")
 		c.String(400, "")
+		return
 	}
 	c.JSON(200, cand)
 }
