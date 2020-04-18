@@ -268,25 +268,33 @@ func (r *Room) AddCandidate(uid, fromUid int64, m *protocol.Candidate) (err erro
 }
 
 func (r *Room) SyncPeerCandidate(uid, fromUid int64, conn *webrtc.PeerConnection) {
+	for {
 
-	if c, ok := r.candidates[uid]; ok {
-		if fromUid != 0 {
-			if sub, ok := c.subs[fromUid]; ok && len(sub.peer) > 0 {
-				for _, v := range sub.peer {
-					conn.AddICECandidate(v)
-					log.Println("add peer candidate", v)
-				}
-			}
-		} else {
-			if c.pub != nil && len(c.pub.peer) > 0 {
-				for _, v := range c.pub.peer {
-					conn.AddICECandidate(v)
-					log.Println("add peer candidate", v)
-				}
-			}
+		if conn.ConnectionState() == webrtc.PeerConnectionStateConnected ||
+			conn.ConnectionState() == webrtc.PeerConnectionStateFailed {
+			break
+		}
 
+		if c, ok := r.candidates[uid]; ok {
+			if fromUid != 0 {
+				if sub, ok := c.subs[fromUid]; ok && len(sub.peer) > 0 {
+					for _, v := range sub.peer {
+						conn.AddICECandidate(v)
+						log.Println("add peer candidate", v)
+					}
+				}
+			} else {
+				if c.pub != nil && len(c.pub.peer) > 0 {
+					for _, v := range c.pub.peer {
+						conn.AddICECandidate(v)
+						log.Println("add peer candidate", v)
+					}
+				}
+
+			}
 		}
 	}
+
 }
 
 func (r *Room) GetCandidate(uid, fromUid int64) []*protocol.Candidate {
