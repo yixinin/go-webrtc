@@ -121,11 +121,11 @@
             $.get(
                 "/pollCandidate?" + p,
                 function (data, status) {
-                    pc.addIceCandidate({
+                    pc.addIceCandidate(new RTCIceCandidate({
                         candidate: data.candidate,
                         sdpMLineIndex: data.sdpMLineIndex,
                         sdpMid: data.sdpMid
-                    })
+                    }))
                 }
             )
         }

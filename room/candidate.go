@@ -48,7 +48,7 @@ func (p *PeerCandidate) AddSub(fromUid int64, candidate *protocol.Candidate, loc
 		SDPMLineIndex: &smi,
 		SDPMid:        &candidate.SdpMid,
 	}
-	if _, ok := p.subs[fromUid]; ok {
+	if _, ok := p.subs[fromUid]; !ok {
 		p.subs[fromUid] = &PeerCandidateItem{
 			local: make([]webrtc.ICECandidateInit, 0, 10),
 			peer:  make([]webrtc.ICECandidateInit, 0, 10),
