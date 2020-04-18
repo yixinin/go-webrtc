@@ -93,7 +93,7 @@
         }
 
         //发送candidate
-        function send_candidate() {
+        function send_all_candidate() {
             for (let i in cands) {
                 var req = {
                     "uid": randUid,
@@ -103,6 +103,29 @@
                 post('/sendCandidate', req);
             }
 
+        }
+
+        function send_candidate(cand) {
+            var req = {
+                "uid": randUid,
+                "candidate": cand
+            }
+
+            post('/sendCandidate', req);
+
+        }
+
+        function poll_candidate(pc) {
+            $.get(
+                "/pollCandidate",
+                function (data, status) {
+                    pc.addIceCandidate({
+                        candidate: data.candidate,
+                        sdpMLineIndex: data.sdpMLineIndex,
+                        sdpMid: data.sdpMid
+                    })
+                }
+            )
         }
 
         function post(r, opt) {
@@ -222,13 +245,21 @@
             pc.onaddstream = onRemoteStreamAdded
             if (recvOnly) {
                 noMedia(pc)
-                return
-            }
-            if (isWebcam) {
-                getWebcamMedia(fromUid, pc)
             } else {
-                getScreenMedia(fromUid, pc)
+                if (isWebcam) {
+                    getWebcamMedia(fromUid, pc)
+                } else {
+                    getScreenMedia(fromUid, pc)
+                }
             }
+
+
+            let timer = setInterval(function () {
+                poll_candidate(pc)
+                if (pc.connectionState == "connected") {
+                    clearInterval(timer)
+                }
+            }, 1000)
         }
 
         // 如果当前浏览器有另一个候选项，将其发送给对等端
@@ -239,11 +270,11 @@
                     "sdpMlineindex": e.candidate.sdpMLineIndex,
                     "candidate": e.candidate.candidate
                 }
-                if (cands.length == 0) {
-                    setTimeout("send_candidate()", "8000");
-                }
+                // if (cands.length == 0) {
+                //     setTimeout("send_candidate()", "8000");
+                // }
                 cands.push(cand)
-
+                send_candidate(cand)
 
             }
         }

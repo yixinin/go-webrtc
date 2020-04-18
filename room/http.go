@@ -64,7 +64,7 @@ func (hs *HttpServer) HandleHttp() {
 
 	hs.g.POST("/getAnswer", hs.SendOffer)
 	hs.g.POST("/sendCandidate", hs.SendCandidate)
-
+	hs.g.GET("/pollCandidate", hs.PollCandidate)
 	hs.g.Run("0.0.0.0:8000")
 }
 
@@ -158,6 +158,28 @@ func (hs *HttpServer) CreateRoom(c *gin.Context) {
 	}
 	var room = NewRoom(hs.config, id, "hgfedcba87654321")
 	hs.rooms[id] = room
+}
+
+type PollCandidateModel struct {
+	FromUid int64 `form:"fromUid" json:"fromUid"`
+	RoomId  int32 `form:"roomId" json:"roomId"`
+	Uid     int64 `form:"uid" json:"uid"`
+}
+
+func (hs *HttpServer) PollCandidate(c *gin.Context) {
+	var p PollCandidateModel
+	c.ShouldBind(&p)
+	if p.FromUid == 0 && p.Uid == 0 {
+		log.Println("pls fill uid and fromUid")
+		c.String(400, "")
+	}
+	var room = hs.GetRoom(p.RoomId)
+	var cand = room.GetCandidate(p.Uid, p.FromUid)
+	if cand == nil {
+		log.Println("no candidates")
+		c.String(400, "")
+	}
+	c.JSON(200, cand)
 }
 
 func (hs *HttpServer) GetRoom(id int32) *Room {

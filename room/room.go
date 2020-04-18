@@ -20,10 +20,11 @@ const (
 )
 
 type Room struct {
-	Id  int32
-	Key string
-	// api                  *webrtc.API
+	Id    int32
+	Key   string
 	peers map[int64]*Peer
+
+	candidates map[int64]*PeerCandidate
 
 	// candidates map[int64]map[string]bool
 	config webrtc.Configuration
@@ -41,10 +42,11 @@ func NewRoom(c *config.Config, id int32, key string) *Room {
 	// m := webrtc.MediaEngine{}
 	// var api = webrtc.NewAPI(webrtc.WithMediaEngine(m))
 	return &Room{
-		Id:     id,
-		Key:    key,
-		config: peerConnectionConfig,
-		peers:  make(map[int64]*Peer),
+		Id:         id,
+		Key:        key,
+		config:     peerConnectionConfig,
+		peers:      make(map[int64]*Peer),
+		candidates: make(map[int64]*PeerCandidate),
 	}
 }
 
@@ -137,6 +139,27 @@ func (r *Room) AddPeer(uid, fromUid int64, sdp string) (answerSdp string, err er
 		}
 	})
 
+	peerConnection.OnICECandidate(func(c *webrtc.ICECandidate) {
+		if c != nil {
+			var cand = c.ToJSON()
+			log.Printf("%+v", cand)
+			var m = &protocol.Candidate{
+				Candidate: cand.Candidate,
+			}
+			if cand.SDPMLineIndex != nil {
+				m.SdpMid = *cand.SDPMid
+			}
+			if cand.SDPMid != nil {
+				m.SdpMlineindex = uint32(*cand.SDPMLineIndex)
+			}
+			if fromUid == 0 {
+				r.candidates[uid].AddPub(m, true)
+			} else {
+				r.candidates[uid].AddSub(fromUid, m, true)
+			}
+		}
+	})
+
 	peerConnection.SetRemoteDescription(offer)
 	answer, err := peerConnection.CreateAnswer(nil)
 	if err != nil {
@@ -145,6 +168,7 @@ func (r *Room) AddPeer(uid, fromUid int64, sdp string) (answerSdp string, err er
 	peerConnection.SetLocalDescription(answer)
 	//TODO 将answer发送给客户端
 	answerSdp = answer.SDP
+	go r.SyncPeerCandidate(uid, fromUid, peerConnection)
 	return
 }
 
@@ -206,6 +230,16 @@ func (r *Room) AddCandidate(uid, fromUid int64, m *protocol.Candidate) (err erro
 		err = errors.New("nil candidate")
 		return
 	}
+
+	if _, ok := r.candidates[uid]; !ok {
+		r.candidates[uid] = NewPeerCandidate()
+	}
+	if fromUid == 0 {
+		r.candidates[uid].AddSub(fromUid, m, false)
+	} else {
+		r.candidates[uid].AddPub(m, false)
+	}
+
 	var smi = uint16(m.SdpMlineindex)
 	var candidate = webrtc.ICECandidateInit{
 		Candidate:     m.Candidate,
@@ -227,6 +261,67 @@ func (r *Room) AddCandidate(uid, fromUid int64, m *protocol.Candidate) (err erro
 		}
 	}
 	return
+}
+
+func (r *Room) SyncPeerCandidate(uid, fromUid int64, conn *webrtc.PeerConnection) {
+
+	if c, ok := r.candidates[uid]; ok {
+		if fromUid != 0 {
+			if sub, ok := c.subs[fromUid]; ok && len(sub.peer) > 0 {
+				for _, v := range sub.peer {
+					conn.AddICECandidate(v)
+				}
+			}
+		} else {
+			if c.pub != nil && len(c.pub.peer) > 0 {
+				for _, v := range c.pub.peer {
+					conn.AddICECandidate(v)
+				}
+			}
+
+		}
+	}
+}
+
+func (r *Room) GetCandidate(uid, fromUid int64) []*protocol.Candidate {
+	if c, ok := r.candidates[uid]; ok {
+		if fromUid == 0 {
+			if c.pub != nil && len(c.pub.local) > 0 {
+				var items = make([]*protocol.Candidate, 0, len(c.pub.local))
+				for _, v := range c.pub.local {
+					var item = &protocol.Candidate{
+						Candidate: v.Candidate,
+					}
+					if v.SDPMLineIndex != nil {
+						item.SdpMlineindex = uint32(*v.SDPMLineIndex)
+					}
+					if v.SDPMid != nil {
+						item.SdpMid = *v.SDPMid
+					}
+					items = append(items, item)
+				}
+				return items
+			}
+		} else {
+			if sub, ok := c.subs[fromUid]; ok && sub != nil && len(sub.local) > 0 {
+				var items = make([]*protocol.Candidate, 0, len(sub.local))
+				for _, v := range sub.local {
+					var item = &protocol.Candidate{
+						Candidate: v.Candidate,
+					}
+					if v.SDPMLineIndex != nil {
+						item.SdpMlineindex = uint32(*v.SDPMLineIndex)
+					}
+					if v.SDPMid != nil {
+						item.SdpMid = *v.SDPMid
+					}
+					items = append(items, item)
+				}
+				return items
+			}
+		}
+	}
+	return nil
 }
 
 func (r *Room) Control(uid, fromUid int64, videoOn, audioOn bool) {
