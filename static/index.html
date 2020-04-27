@@ -275,15 +275,15 @@
             }
 
 
-            let timer = setInterval(function () {
-                poll_candidate(pc)
-                if (pc.connectionState == "connected" || pc.connectionState == "failed") {
-                    clearInterval(timer)
-                    if (pc.connectionState == "failed") {
-                        alert("connect failed, pls try again")
-                    }
-                }
-            }, 1000)
+            // let timer = setInterval(function () {
+            //     poll_candidate(pc)
+            //     if (pc.connectionState == "connected" || pc.connectionState == "failed") {
+            //         clearInterval(timer)
+            //         if (pc.connectionState == "failed") {
+            //             alert("connect failed, pls try again")
+            //         }
+            //     }
+            // }, 1000)
         }
 
         // 如果当前浏览器有另一个候选项，将其发送给对等端

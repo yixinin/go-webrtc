@@ -62,7 +62,7 @@ func (hs *HttpServer) HandleHttp() {
 
 	hs.g.POST("/getAnswer", hs.SendOffer)
 	hs.g.POST("/sendCandidate", hs.SendCandidate)
-	hs.g.GET("/pollCandidate", hs.PollCandidate)
+	// hs.g.GET("/pollCandidate", hs.PollCandidate)
 	hs.g.Run("0.0.0.0:8000")
 }
 
