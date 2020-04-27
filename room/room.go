@@ -55,6 +55,7 @@ func (r *Room) AddPeer(uid, fromUid int64, sdp string) (answerSdp string, err er
 		SDP:  sdp,
 		Type: webrtc.SDPTypeOffer,
 	}
+
 	var isPublisher = fromUid == 0
 	m := webrtc.MediaEngine{}
 	var mediaCodecs []*webrtc.RTPCodec
@@ -180,6 +181,7 @@ func (r *Room) AddPeer(uid, fromUid int64, sdp string) (answerSdp string, err er
 	peerConnection.SetLocalDescription(answer)
 	//TODO 将answer发送给客户端
 	answerSdp = answer.SDP
+	fmt.Println(answerSdp)
 	go r.SyncPeerCandidate(uid, fromUid, peerConnection)
 	return
 }

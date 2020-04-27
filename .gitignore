@@ -2,3 +2,5 @@
 go.sum
 *.exe
 go-webrtc
+answer.txt
+offer.txt
