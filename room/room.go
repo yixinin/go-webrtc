@@ -98,7 +98,7 @@ func (r *Room) AddPeer(uid, fromUid int64, sdp string) (answerSdp string, err er
 
 		targetPeer, ok := r.peers[fromUid]
 		var senders []*webrtc.RTPSender
-		if ok {
+		if ok && !targetPeer.Closed() {
 			senders = make([]*webrtc.RTPSender, 0, len(targetPeer.pub.outputTracks))
 			for _, track := range targetPeer.pub.outputTracks {
 				if track != nil {
@@ -181,6 +181,7 @@ func (r *Room) AddPeer(uid, fromUid int64, sdp string) (answerSdp string, err er
 	peerConnection.SetLocalDescription(answer)
 	//TODO 将answer发送给客户端
 	answerSdp = answer.SDP
+
 	// fmt.Println(answerSdp)
 	go r.SyncPeerCandidate(uid, fromUid, peerConnection)
 	return
