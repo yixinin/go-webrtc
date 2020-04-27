@@ -98,7 +98,7 @@ func (r *Room) AddPeer(uid, fromUid int64, sdp string) (answerSdp string, err er
 
 		targetPeer, ok := r.peers[fromUid]
 		var senders []*webrtc.RTPSender
-		if ok && !targetPeer.Closed() {
+		if ok && !targetPeer.pub.Closed() {
 			senders = make([]*webrtc.RTPSender, 0, len(targetPeer.pub.outputTracks))
 			for _, track := range targetPeer.pub.outputTracks {
 				if track != nil {
