@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"strconv"
+	"sync"
 	"time"
 
 	"go-webrtc/config"
@@ -20,6 +21,8 @@ const (
 )
 
 type Room struct {
+	sync.RWMutex
+
 	Id    int32
 	Key   string
 	peers map[int64]*Peer
@@ -50,7 +53,7 @@ func NewRoom(c *config.Config, id int32, key string) *Room {
 	}
 }
 
-func (r *Room) AddPeer(uid, fromUid int64, sdp string) (answerSdp string, err error) {
+func (r *Room) NewPeerConnction(uid, fromUid int64, sdp string) (answerSdp string, err error) {
 	offer := webrtc.SessionDescription{
 		SDP:  sdp,
 		Type: webrtc.SDPTypeOffer,
@@ -79,46 +82,29 @@ func (r *Room) AddPeer(uid, fromUid int64, sdp string) (answerSdp string, err er
 		return
 	}
 
-	var peer, ok = r.peers[uid]
+	var peer, ok = r.GetPeer(uid)
 	if !ok {
 		peer = NewPeer(uid)
 
-		r.peers[uid] = peer
+		r.AddPeer(peer)
 	}
 
 	if isPublisher {
 		peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo)
 		peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeAudio)
 
-		peer.AddPublisher(peerConnection)
+		ok := r.AddPublisher(uid, peerConnection)
+		if !ok {
+			return
+		}
 
 		r.OnTrack(uid, peerConnection)
 	} else {
 		//添加目标视频源
-
-		targetPeer, ok := r.peers[fromUid]
-		var senders []*webrtc.RTPSender
-		if ok && !targetPeer.pub.Closed() {
-			senders = make([]*webrtc.RTPSender, 0, len(targetPeer.pub.outputTracks))
-			for _, track := range targetPeer.pub.outputTracks {
-				if track != nil {
-					var sender *webrtc.RTPSender
-					sender, err = peerConnection.AddTrack(track)
-					if err != nil {
-						log.Println(err)
-						return
-					}
-					if sender != nil {
-						senders = append(senders, sender)
-					}
-					log.Println("add track", sender.Track().Codec().Type)
-				}
-			}
-		} else {
-			log.Println("target not in room", fromUid)
+		ok := r.AddSubscriber(uid, fromUid, peerConnection)
+		if !ok {
+			return
 		}
-
-		peer.AddSubscriber(fromUid, peerConnection, senders)
 	}
 
 	// r.OnIceCandidate(uid, fromUid, peer)
@@ -128,27 +114,7 @@ func (r *Room) AddPeer(uid, fromUid int64, sdp string) (answerSdp string, err er
 			state == webrtc.PeerConnectionStateClosed ||
 			state == webrtc.ICETransportStateFailed {
 			//TODO删除当前连接
-			if _, ok := r.peers[uid]; ok {
-				if isPublisher {
-					r.peers[uid].pub = nil
-					for _, peer := range r.peers {
-						if len(peer.subs) > 0 {
-							if sub, ok := peer.subs[uid]; ok {
-								if sub != nil {
-									peer.subs[uid].Close()
-								}
-								delete(peer.subs, uid)
-							}
-						}
-					}
-				} else {
-					if len(r.peers[uid].subs) > 0 {
-						if _, ok := r.peers[uid].subs[fromUid]; ok {
-							delete(r.peers[uid].subs, fromUid)
-						}
-					}
-				}
-			}
+			r.DelPeer(uid, fromUid, isPublisher)
 		}
 	})
 
@@ -207,21 +173,25 @@ func (r *Room) OnTrack(uid int64, conn *webrtc.PeerConnection) {
 			return
 		}
 
-		r.peers[uid].AddPubOutputTrack(outputTrack)
-		//添加到所有订阅了当前用户的连接
-		for _, peer := range r.peers {
-			if len(peer.subs) > 0 {
-				if sub, ok := peer.subs[uid]; ok {
-					if !sub.Closed() {
-						err := sub.AddTrack(outputTrack)
-						if err != nil {
-							log.Println(err)
-						}
-					}
-				}
-			}
-
+		var peer, ok = r.GetPeer(uid)
+		if ok {
+			peer.AddPubOutputTrack(outputTrack)
 		}
+
+		//添加到所有订阅了当前用户的连接
+		// for _, peer := range r.peers {
+		// 	if len(peer.subs) > 0 {
+		// 		if sub, ok := peer.subs[uid]; ok {
+		// 			if !sub.Closed() {
+		// 				err := sub.AddTrack(outputTrack)
+		// 				if err != nil {
+		// 					log.Println(err)
+		// 				}
+		// 			}
+		// 		}
+		// 	}
+
+		// }
 
 		rtpBuf := make([]byte, 1400)
 		for {
@@ -497,4 +467,97 @@ func (r *Room) Close() {
 
 func (r *Room) Closed() bool {
 	return len(r.peers) == 0
+}
+
+func (r *Room) GetPeer(uid int64) (*Peer, bool) {
+	r.RLock()
+	defer r.RUnlock()
+	peer, ok := r.peers[uid]
+	return peer, ok
+}
+
+func (r *Room) GetPeers() []*Peer {
+	var peers = make([]*Peer, 0, len(r.peers))
+	for _, peer := range r.peers {
+		peers = append(peers, peer)
+	}
+	return peers
+}
+func (r *Room) AddPeer(peer *Peer) {
+	r.Lock()
+	defer r.Unlock()
+	if p, ok := r.peers[peer.uid]; ok {
+		p.Close()
+	}
+	r.peers[peer.uid] = peer
+}
+
+func (r *Room) DelPeer(uid, fromUid int64, isPublisher bool) {
+	if peer, ok := r.peers[uid]; ok {
+		if isPublisher {
+			peer.pub = nil
+			for _, peer := range r.peers {
+				if len(peer.subs) > 0 {
+					if sub, ok := peer.subs[uid]; ok {
+						if sub != nil {
+							peer.subs[uid].Close()
+						}
+						delete(peer.subs, uid)
+					}
+				}
+			}
+		} else {
+			if len(r.peers[uid].subs) > 0 {
+				if _, ok := r.peers[uid].subs[fromUid]; ok {
+					delete(r.peers[uid].subs, fromUid)
+				}
+			}
+		}
+	}
+}
+
+func (r *Room) AddPublisher(uid int64, conn *webrtc.PeerConnection) bool {
+	r.Lock()
+	defer r.Unlock()
+	if peer, ok := r.peers[uid]; ok {
+		peer.AddPublisher(conn)
+		return true
+	}
+	return false
+}
+
+func (r *Room) AddSubscriber(uid, fromUid int64, conn *webrtc.PeerConnection) bool {
+	r.Lock()
+	defer r.Unlock()
+	var err error
+	if peer, ok := r.peers[uid]; ok {
+		targetPeer, ok := r.peers[fromUid]
+		var senders []*webrtc.RTPSender
+		if ok && !targetPeer.pub.Closed() {
+			senders = make([]*webrtc.RTPSender, 0, len(targetPeer.pub.outputTracks))
+			for _, track := range targetPeer.pub.outputTracks {
+				if track != nil {
+					var sender *webrtc.RTPSender
+					sender, err = conn.AddTrack(track)
+					if err != nil {
+						log.Println(err)
+						return false
+					}
+					if sender != nil {
+						senders = append(senders, sender)
+					}
+					log.Println("add track", sender.Track().Codec().Type)
+				}
+			}
+		} else {
+			log.Println("target not in room", fromUid)
+		}
+		if len(senders) == 0 {
+			return false
+		}
+
+		peer.AddSubscriber(fromUid, conn, senders)
+		return true
+	}
+	return false
 }

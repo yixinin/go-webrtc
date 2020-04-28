@@ -34,7 +34,7 @@ func (s *Server) OpenPeer(ctx context.Context, req *protocol.OpenPeerReq) (*prot
 	if uid == 0 {
 		return ack, nil
 	}
-	sdp, err := room.AddPeer(uid, req.FromUid, req.Sdp)
+	sdp, err := room.NewPeerConnction(uid, req.FromUid, req.Sdp)
 	if err != nil {
 		log.Println(err)
 	}

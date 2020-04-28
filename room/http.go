@@ -1,6 +1,7 @@
 package room
 
 import (
+	"fmt"
 	"go-webrtc/config"
 	"go-webrtc/protocol"
 	"net/http"
@@ -60,9 +61,13 @@ func (hs *HttpServer) HandleHttp() {
 	hs.g.StaticFile("/index", "static/index.html")
 	hs.g.StaticFile("/index.html", "static/index.html")
 
-	hs.g.POST("/getAnswer", hs.SendOffer)
+	hs.g.POST("/sendOffer", hs.SendOffer)
 	hs.g.POST("/sendCandidate", hs.SendCandidate)
 	// hs.g.GET("/pollCandidate", hs.PollCandidate)
+	hs.g.GET("/createRoom", hs.CreateRoom)
+
+	hs.g.GET("/getUsers", hs.GetUsers)
+
 	hs.g.Run("0.0.0.0:8000")
 }
 
@@ -100,8 +105,12 @@ func (hs *HttpServer) SendOffer(c *gin.Context) {
 		c.String(400, err.Error())
 		return
 	}
-	room := hs.GetRoom(p.RoomId)
-	answer, err := room.AddPeer(p.Uid, p.FromUid, p.Offer)
+	var room, ok = hs.GetRoom(p.RoomId)
+	if !ok && p.RoomId != 0 {
+		c.String(400, "no such room")
+		return
+	}
+	answer, err := room.NewPeerConnction(p.Uid, p.FromUid, p.Offer)
 	if err != nil {
 		log.Println(err)
 
@@ -131,7 +140,11 @@ func (hs *HttpServer) SendCandidate(c *gin.Context) {
 		c.String(400, "candidate is null")
 		return
 	}
-	room := hs.GetRoom(p.RoomId)
+	var room, ok = hs.GetRoom(p.RoomId)
+	if !ok && p.RoomId != 0 {
+		c.String(400, "no such room")
+		return
+	}
 	err = room.AddCandidate(p.Uid, p.FromUid, p.Candidate)
 	if err != nil {
 		log.Println(err)
@@ -157,6 +170,7 @@ func (hs *HttpServer) CreateRoom(c *gin.Context) {
 	}
 	var room = NewRoom(hs.config, id, "hgfedcba87654321")
 	hs.rooms[id] = room
+	c.Redirect(302, fmt.Sprintf("/index?roomId=%d", id))
 }
 
 type PollCandidateModel struct {
@@ -173,7 +187,11 @@ func (hs *HttpServer) PollCandidate(c *gin.Context) {
 		c.String(400, "pls fill uid and fromUid")
 		return
 	}
-	var room = hs.GetRoom(p.RoomId)
+	var room, ok = hs.GetRoom(p.RoomId)
+	if !ok && p.RoomId != 0 {
+		c.String(400, "no such room")
+		return
+	}
 	var cand = room.GetCandidate(p.Uid, p.FromUid)
 	if cand == nil {
 		log.Println("no candidates")
@@ -183,12 +201,51 @@ func (hs *HttpServer) PollCandidate(c *gin.Context) {
 	c.JSON(200, cand)
 }
 
-func (hs *HttpServer) GetRoom(id int32) *Room {
+func (hs *HttpServer) GetRoom(id int32) (*Room, bool) {
 	hs.RLock()
 	defer hs.RUnlock()
 	room, ok := hs.rooms[id]
 	if !ok {
 		room = hs.room
 	}
-	return room
+	return room, ok
+}
+
+type GetUsersModel struct {
+	RoomId int32
+}
+
+type UserModel struct {
+	Uid      int64 `json:"uid"`
+	HasVideo bool  `json:"hasVideo"`
+	HasAudio bool  `json:"hasAudio"`
+}
+
+type GetUserAck struct {
+	Users []*UserModel
+}
+
+func (hs *HttpServer) GetUsers(c *gin.Context) {
+	var p GetUsersModel
+	c.ShouldBind(&p)
+
+	var room, ok = hs.GetRoom(p.RoomId)
+	if !ok && p.RoomId != 0 {
+		c.String(400, "no such room")
+		return
+	}
+
+	var peers = room.GetPeers()
+
+	var users = make([]*UserModel, 0, len(peers))
+	for _, peer := range peers {
+		users = append(users, &UserModel{
+			HasAudio: peer.HasAudio(),
+			HasVideo: peer.HasVideo(),
+		})
+	}
+	var ack = &GetUserAck{
+		Users: users,
+	}
+	c.JSON(200, ack)
 }

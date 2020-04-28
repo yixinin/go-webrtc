@@ -2,17 +2,12 @@ package room
 
 import (
 	"math/rand"
-	"sync/atomic"
 	"time"
 )
 
-func init() {
-	rand.Seed(time.Now().Unix())
-}
-
-var roomId int32 = 10023
+var R = rand.New(rand.NewSource(time.Now().Unix()))
 
 func GetRoomID() int32 {
-	newRoomId := atomic.AddInt32(&roomId, rand.Int31n(10))
+	newRoomId := 10023 + R.Int31()
 	return newRoomId
 }

@@ -37,7 +37,7 @@
 
         var randUid = Math.floor(Math.random() * 10000 + 1);
         var cands = new Array()
-
+        var roomId = getQueryString("roomId")
         var signalingChannel, key, id,
             haveLocalMedia = false,
             weWaited = false,
@@ -63,6 +63,10 @@
             v1played = false
             v2played = false
             v3played = false
+
+            if (roomId == null) {
+                roomId = 0
+            }
         }
 
 
@@ -73,10 +77,11 @@
             var req = {
                 offer: offer.sdp,
                 fromUid: fromUid,
-                uid: randUid
+                uid: randUid,
+                roomId: Number(roomId),
             }
 
-            $.post('/getAnswer',
+            $.post('/sendOffer',
                 req,
                 function (data, status) {
                     console.log("get answer " + status);
@@ -109,7 +114,8 @@
             var req = {
                 "uid": randUid,
                 "candidate": cand,
-                "fromUid": fromUid
+                "fromUid": fromUid,
+                "roomId": Number(roomId),
             }
 
             post('/sendCandidate', req);
@@ -351,7 +357,12 @@
             createPC(0, t == 1, false)
         }
 
-
+        function getQueryString(name) {
+            var reg = new RegExp("(^|&)" + name + "=([^&]*)(&|$)", "i");
+            var r = window.location.search.substr(1).match(reg);
+            if (r != null) return decodeURI(r[2]);
+            return null;
+        }
 
     </script>
 

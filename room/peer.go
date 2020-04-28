@@ -87,3 +87,30 @@ func (p *Peer) CloseSubscrible() {
 		v.conn.Close()
 	}
 }
+
+func (p *Peer) HasVideo() bool {
+	if !p.HasPub() {
+		return false
+	}
+	for _, v := range p.pub.outputTracks {
+		if v.Codec().Type == webrtc.RTPCodecTypeVideo {
+			return true
+		}
+	}
+	return false
+}
+func (p *Peer) HasAudio() bool {
+	if !p.HasPub() {
+		return false
+	}
+	for _, v := range p.pub.outputTracks {
+		if v.Codec().Type == webrtc.RTPCodecTypeAudio {
+			return true
+		}
+	}
+	return false
+}
+
+func (p *Peer) HasPub() bool {
+	return !p.pub.Closed() && len(p.pub.outputTracks) > 0
+}

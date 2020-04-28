@@ -3,9 +3,11 @@ package main
 import (
 	"go-webrtc/config"
 	"go-webrtc/room"
+	"sync"
 )
 
 type Server struct {
+	sync.RWMutex
 	rooms  map[int32]*room.Room
 	config *config.Config
 }
